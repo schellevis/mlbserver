@@ -5139,7 +5139,10 @@ class sessionClass {
               let run_differential_index = Math.max(-4, Math.min((home_score - away_score), 4)) + 4
               let inning_num_index = Math.min(inning_num, 9)
 
-              let leverage_index = LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] + leverage_adjust
+              // LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+              const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+              const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+              let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
 
               games.push({
                 'leverage_index': leverage_index,

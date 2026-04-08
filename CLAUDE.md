@@ -67,7 +67,19 @@ These changes are not in the upstream repo and must be re-applied after updating
 
 **What:** adds `really_boring` condition so Game Changer switches immediately (without waiting for a new batter) when the current game's leverage index is very low.
 
-**Find this line:**
+**Find this line (1):** inning multiplier — in `getBestGame()`, just before `games.push(`:
+```js
+let leverage_index = LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] + leverage_adjust
+```
+**Replace with:**
+```js
+// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+```
+
+**Find this line (2):** boring game switch — in the same function, inside `for (var i=0; i<best_games.length; i++)`:
 ```js
 if ( !curr_game || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
 ```
