@@ -4256,7 +4256,7 @@ class sessionClass {
       this.log('getStreamFinderData error : ' + e.message)
     }
   }
-  
+
   is_runner(base) {
     if (!base) {
       return '0'
@@ -5233,7 +5233,9 @@ class sessionClass {
               if ( curr_game && (best_games[i].leverage_index > curr_game.leverage_index) ) {
                 game_better = true
               }
-              if ( !curr_game || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+              // LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+              const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+              if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
                 curr_game = best_games[i]
                 this.log(game_changer_title + 'loading game ' + curr_game.teams)
                 this.temp_cache.gamechanger[id].gamePk = curr_game.game_pk
