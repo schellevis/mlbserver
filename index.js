@@ -1540,13 +1540,13 @@ app.get('/', async function(req, res) {
       content_protect_b = '&content_protect=' + content_protect
     }
 
-    var body = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-type" content="text/html;charset=UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"><title>' + appname + '</title><link rel="icon" href="favicon.svg' + content_protect_a + '"><style type="text/css">input[type=text],input[type=button]{-webkit-appearance:none;-webkit-border-radius:0}body{width:480px;color:lightgray;background-color:black;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:none}a{color:darkgray}button{color:lightgray;background-color:black}button.default{color:black;background-color:lightgray}table{width:100%;pad}table,th,td{border:1px solid darkgray;border-collapse:collapse}th,td{padding:5px}.tinytext,textarea,input[type="number"]{font-size:.8em}textarea{width:380px}.freegame,.freegame a{color:green}.blackout,.blackout a{text-decoration:line-through}'
+    var body = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-type" content="text/html;charset=UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"><title>' + appname + '</title><link rel="icon" href="favicon.svg' + content_protect_a + '"><style type="text/css">@media(prefers-color-scheme:light){body{background-color:#f8fafc;color:#1e293b}h1{color:#0f172a}.controls{background-color:#f1f5f9;border-color:#e2e8f0}.controls p{border-bottom-color:#e2e8f0}.controls p>.tooltip:first-child{color:#94a3b8}button{color:#334155;background-color:#fff;border-color:#cbd5e1}button:hover{background-color:#f1f5f9;border-color:#94a3b8}button.default{color:#fff;background-color:#2563eb;border-color:#2563eb}button.default:hover{background-color:#1d4ed8}input[type=date],select{color:#1e293b;background-color:#fff;border-color:#cbd5e1}table,th,td{border-color:#e2e8f0}th{background-color:#f1f5f9;color:#64748b}tbody tr:hover td{background-color:#f8fafc}textarea,input[type="number"]{background-color:#fff;border-color:#cbd5e1;color:#1e293b}.tooltip .tooltiptext{background-color:#1e293b;border-color:#334155;color:#e2e8f0}.modal-content{background-color:#fff;border-color:#e2e8f0;color:#1e293b}a{color:#2563eb}.date-updated{color:#94a3b8}}*{box-sizing:border-box}input[type=text],input[type=button]{-webkit-appearance:none;-webkit-border-radius:0}body{width:520px;color:#e2e8f0;background-color:#0f1117;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.6;-webkit-text-size-adjust:none;padding:0 12px 24px}h1{font-size:1.2rem;font-weight:700;color:#f8fafc;margin:16px 0 2px;letter-spacing:-0.01em}p{margin:5px 0}a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd;text-decoration:underline}button{color:#cbd5e1;background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;padding:3px 10px;font-size:13px;cursor:pointer;transition:background .1s,border-color .1s}button:hover{background-color:#262d42;border-color:#3d4560}button.default{color:#fff;background-color:#2563eb;border-color:#2563eb}button.default:hover{background-color:#1d4ed8;border-color:#1d4ed8}input[type=date],select{color:#e2e8f0;background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;padding:3px 6px;font-size:13px}select{cursor:pointer}table{width:100%;border-collapse:collapse}table,th,td{border:1px solid #1e2535}th{background-color:#151824;color:#94a3b8;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;text-align:left}td{padding:6px 8px}tbody tr:hover td{background-color:#13162080}.tinytext{font-size:.8em;color:#64748b}textarea,input[type="number"]{font-size:.8em;background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;color:#e2e8f0;padding:4px 6px}textarea{width:100%;display:block}.freegame,.freegame a{color:#22c55e}.blackout,.blackout a{text-decoration:line-through;opacity:.5}.controls{background-color:#13162080;border:1px solid #1e2535;border-radius:8px;padding:2px 14px;margin:8px 0 14px}.controls p{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:0;padding:8px 0;border-bottom:1px solid #1a1f2e}.controls p:last-child{border-bottom:none}.controls p>.tooltip:first-child{width:122px;flex-shrink:0;color:#64748b;font-size:.82em;font-weight:500;border-bottom:none}.date-updated{margin-left:auto;font-size:.75em;color:#4b5563;white-space:nowrap;flex-shrink:0}'
 
     // Highlights CSS
-    body += '.modal{display:none;position:fixed;z-index:1;left:0;top:0;width:100%;height:100%;overflow:hidden;background-color:rgb(0,0,0);background-color:rgba(0,0,0,0.4)}.modal-content{position:absolute;top:100px;bottom:20px;left:50%;transform:translateX(-50%);background-color:#fefefe;padding:10px;border:1px solid #888;width:360px;overflow-y:auto;color:black}#highlights{overflow-y:auto;}#highlights a{color:black}.close{color:black;float:right;font-size:28px;font-weight:bold;}#highlights a:hover,#highlights a:focus,.close:hover,.close:focus{color:gray;text-decoration:none;cursor:pointer;}'
+    body += '.modal{display:none;position:fixed;z-index:1;left:0;top:0;width:100%;height:100%;overflow:hidden;background-color:rgba(0,0,0,.75)}.modal-content{position:absolute;top:80px;bottom:20px;left:50%;transform:translateX(-50%);background-color:#1a1d2e;border:1px solid #2d3348;border-radius:8px;padding:16px;width:400px;overflow-y:auto;color:#e2e8f0}#highlights{overflow-y:auto}#highlights a{color:#60a5fa}.close{color:#64748b;float:right;font-size:24px;font-weight:bold;line-height:1;cursor:pointer}#highlights a:hover,#highlights a:focus,.close:hover,.close:focus{color:#94a3b8;text-decoration:none;cursor:pointer}'
 
     // Tooltip CSS
-    body += '.tooltip{position:relative;display:inline-block;border-bottom: 1px dotted gray;}.tooltip .tooltiptext{font-size:.8em;visibility:hidden;width:360px;background-color:gray;color:white;text-align:left;padding:5px;border-radius:6px;position:absolute;z-index:1;top:100%;left:75%;margin-left:-30px;}.tooltip:hover .tooltiptext{visibility:visible;}'
+    body += '.tooltip{position:relative;display:inline-block;border-bottom:1px dotted #4b5563;cursor:help}.tooltip .tooltiptext{font-size:.8em;visibility:hidden;width:320px;background-color:#1e2130;border:1px solid #2d3348;border-radius:6px;color:#cbd5e1;text-align:left;padding:8px 10px;position:absolute;z-index:10;top:100%;left:0;margin-top:4px;box-shadow:0 4px 16px rgba(0,0,0,.6);line-height:1.4}.tooltip:hover .tooltiptext{visibility:visible}'
 
     body += '</style><script type="text/javascript">' + "\n";
 
@@ -1570,7 +1570,7 @@ app.get('/', async function(req, res) {
 
 		body += '</script></head><body><h1>' + appname + '</h1>' + "\n"
 
-    body += '<p><span class="tooltip tinytext">Touch or hover over an option name for more details</span></p>' + "\n"
+    body += '<div class="controls">' + "\n"
 
     todayUTCHours -= 4
     body += '<p><span class="tooltip">Date<span class="tooltiptext">"today" lasts until ' + todayUTCHours + ' AM EST. Home page will default to yesterday between ' + todayUTCHours + ' AM - ' + (YESTERDAY_UTC_HOURS - 4) + ' AM EST.</span></span>: <input type="date" id="gameDate" value="' + gameDate + '"/> '
@@ -1579,7 +1579,7 @@ app.get('/', async function(req, res) {
       if ( ((VALID_DATES[i] == VALID_DATES[0]) && (gameDate == today)) || ((VALID_DATES[i] == VALID_DATES[1]) && (gameDate == yesterday)) ) body += 'class="default" '
       body += 'onclick="date=\'' + VALID_DATES[i] + '\';reload()">' + VALID_DATES[i] + '</button> '
     }
-    body += '</p>' + "\n" + '<p><span class="tinytext">Updated ' + session.getCacheUpdatedDate(cache_name) + '</span></p>' + "\n"
+    body += '<span class="date-updated">Updated ' + session.getCacheUpdatedDate(cache_name) + '</span></p>' + "\n"
 
     body += '<p><span class="tooltip">Level<span class="tooltiptext">Major or minor league level</span></span>: '
     for (const [key, value] of Object.entries(levels)) {
@@ -1588,7 +1588,7 @@ app.get('/', async function(req, res) {
       body += 'onclick="org=\'' + default_org + '\';level=\'' + key + '\';reload()">' + key + '</button> '
     }
 
-    body += ' or <span class="tooltip">Org<span class="tooltiptext">Major league parent organization</span></span>: '
+    body += '</p>\n<p><span class="tooltip">Org<span class="tooltiptext">Major league parent organization</span></span>: '
     body += '<select id="org" onchange="level=\'' + default_org + '\';org=this.value;reload()">'
     body += '<option value="' + default_org + '">' + default_org + '</option>'
     var orgs = session.getOrgs()
@@ -1666,7 +1666,7 @@ app.get('/', async function(req, res) {
     }
     body += '</p>' + "\n"
 
-    body += "<table>" + "\n"
+    body += "</div>\n<table>" + "\n"
 
     // Rename some parameters before display links
     var mediaFeedType = 'mediaFeedType'
@@ -2732,22 +2732,12 @@ app.get('/embed-videojs.html', async function(req, res) {
 <title>` + appname + ` player</title>
 <link rel="icon" href="favicon.svg` + content_protect + `">
 <style type="text/css">
-body {
-  background-color:black;
-  color:lightgrey;
-  font-family:Arial,Helvetica,sans-serif;
-}
-.video-wrapper {
-  height: 94vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-button {
-  color:lightgray;
-  background-color:black;
-}
+*{box-sizing:border-box}
+body{background-color:#0f1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:0;padding:8px}
+.video-wrapper{height:94vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+button{color:#cbd5e1;background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;padding:3px 10px;font-size:13px;cursor:pointer}
+button:hover{background-color:#262d42}
+a{color:#60a5fa;text-decoration:none}
 </style>
 <script>
 function goBack() {
@@ -2860,7 +2850,7 @@ app.get('/embed.html', async function(req, res) {
   }
 
   // Adapted from https://hls-js.netlify.app/demo/basic-usage.html and https://hls-js-dev.netlify.app/demo
-  var body = '<html><head><meta charset="UTF-8"><meta http-equiv="Content-type" content="text/html;charset=UTF-8"><title>' + appname + ' player</title><link rel="icon" href="favicon.svg' + content_protect + '"><style type="text/css">input[type=text],input[type=button]{-webkit-appearance:none;-webkit-border-radius:0}body{background-color:black;color:lightgrey;font-family:Arial,Helvetica,sans-serif}video{width:100% !important;height:auto !important;max-width:1280px}input[type=number]::-webkit-inner-spin-button{opacity:1}button{color:lightgray;background-color:black}button.default{color:black;background-color:lightgray}</style><script>function goBack(){var prevPage=window.location.href;window.history.go(-1);setTimeout(function(){if(window.location.href==prevPage){window.location.href="' + http_root + '/' + content_protect + '"}}, 500)}function toggleAudio(x){var elements=document.getElementsByClassName("audioButton");for(var i=0;i<elements.length;i++){elements[i].className="audioButton"}document.getElementById("audioButton"+x).className+=" default";hls.audioTrack=x}function changeTime(x){video.currentTime+=x}function changeRate(x){let newRate=Math.round((Number(document.getElementById("playback_rate").value)+x)*10)/10;if((newRate<=document.getElementById("playback_rate").max) && (newRate>=document.getElementById("playback_rate").min)){document.getElementById("playback_rate").value=newRate.toFixed(1);video.defaultPlaybackRate=video.playbackRate=document.getElementById("playback_rate").value}}function myKeyPress(e){if(e.key=="ArrowRight"){changeTime(10)}else if(e.key=="ArrowLeft"){changeTime(-10)}else if(e.key=="ArrowUp"){changeRate(0.1)}else if(e.key=="ArrowDown"){changeRate(-0.1)}}</script></head><body onkeydown="myKeyPress(event)"><script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script><video id="video"'
+  var body = '<html><head><meta charset="UTF-8"><meta http-equiv="Content-type" content="text/html;charset=UTF-8"><title>' + appname + ' player</title><link rel="icon" href="favicon.svg' + content_protect + '"><style type="text/css">*{box-sizing:border-box}input[type=text],input[type=button]{-webkit-appearance:none;-webkit-border-radius:0}body{background-color:#0f1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:8px;margin:0}video{width:100% !important;height:auto !important;max-width:1280px}input[type=number]::-webkit-inner-spin-button{opacity:1}input[type=number]{background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;color:#e2e8f0;padding:2px 6px}button{color:#cbd5e1;background-color:#1e2130;border:1px solid #2d3348;border-radius:4px;padding:3px 10px;font-size:13px;cursor:pointer}button:hover{background-color:#262d42}button.default{color:#fff;background-color:#2563eb;border-color:#2563eb}a{color:#60a5fa;text-decoration:none}</style><script>function goBack(){var prevPage=window.location.href;window.history.go(-1);setTimeout(function(){if(window.location.href==prevPage){window.location.href="' + http_root + '/' + content_protect + '"}}, 500)}function toggleAudio(x){var elements=document.getElementsByClassName("audioButton");for(var i=0;i<elements.length;i++){elements[i].className="audioButton"}document.getElementById("audioButton"+x).className+=" default";hls.audioTrack=x}function changeTime(x){video.currentTime+=x}function changeRate(x){let newRate=Math.round((Number(document.getElementById("playback_rate").value)+x)*10)/10;if((newRate<=document.getElementById("playback_rate").max) && (newRate>=document.getElementById("playback_rate").min)){document.getElementById("playback_rate").value=newRate.toFixed(1);video.defaultPlaybackRate=video.playbackRate=document.getElementById("playback_rate").value}}function myKeyPress(e){if(e.key=="ArrowRight"){changeTime(10)}else if(e.key=="ArrowLeft"){changeTime(-10)}else if(e.key=="ArrowUp"){changeRate(0.1)}else if(e.key=="ArrowDown"){changeRate(-0.1)}}</script></head><body onkeydown="myKeyPress(event)"><script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script><video id="video"'
   if ( controls == VALID_CONTROLS[0] ) {
     body += ' controls'
   }
