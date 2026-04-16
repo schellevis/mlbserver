@@ -3558,38 +3558,41 @@ class sessionClass {
       if ( !this.cache || !this.cache.bigInningScheduleCacheExpiry || (currentDate > new Date(this.cache.bigInningScheduleCacheExpiry)) ) {
         if ( !this.cache.bigInningSchedule ) this.cache.bigInningSchedule = {}
         let reqObj = {
-          url: 'https://www.fubo.tv/welcome/channel/mlb-big-inning',
+          url: 'https://watch.product.api.espn.com/api/product/v3/watchespn/web/catalog/ae4eb028-0af3-42e7-8965-9304c5817969?lang=en&features=continueWatching%2Csfb-all%2Cpbov7%2Chigh-volume-row%2Csc4u%2Cguide-menu-header%2Ccutl%2Cheader-quickserve%2Cautoplay%2Cwatch-web-redesign%2CimageRatio58x13%2CpromoTiles%2CopenAuthz%2Cvideo-header%2Cexplore-row%2Cbutton-service%2Cinline-header%2Cflagship&deviceBrand=web&streamMenu=true&headerBgImageWidth=1280&countryCode=US&entitlements=no&tz=UTC-0400&userab=espn_watch_for_you_web-392*watch-fy-a-1642',
           headers: {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'accept': '*/*',
             'accept-encoding': 'gzip, deflate, br, zstd',
-            'referer': 'https://www.fubo.tv',
+            'origin': 'https://www.espn.com',
+            'referer': 'https://www.espn.com/',
             'user-agent': USER_AGENT
           },
+          json: true,
           gzip: true
         }
         var response = await this.httpGet(reqObj, false)
         if ( response ) {
-          // disabled because it's big
-          //this.debuglog(response)
+          this.debuglog(JSON.stringify(response))
           
-          let nextdatastring = response.match(/<script id=\"__NEXT_DATA__\" type=\"application\/json\">(.*?)<\/script>/)
-          let nextdata = JSON.parse(nextdatastring[1])
-          let initialState = JSON.parse(nextdata.props.pageProps.initialState.replace(/\\"/g, '"'))
-
-          initialState.channel.channelPrograms.live.data.forEach((program) => {
-            program.airings.forEach((airing) => {
-              let est_date = new Date(airing.accessRightsV2.live.startTime).toLocaleString("en-US", {timeZone: 'America/New_York'})
-              let date_array = est_date.split(',')[0].split('/')
-              let this_datestring = date_array[2] + '-' + date_array[0].padStart(2, '0') + '-' + date_array[1].padStart(2, '0')
-              if ( !this.cache.bigInningSchedule[this_datestring] || !this.cache.bigInningSchedule[this_datestring].length ) {
-                this.cache.bigInningSchedule[this_datestring] = []
+          if ( response.page && response.page.buckets && response.page.buckets[0] && response.page.buckets[0].contents ) {
+            for (var i=0; i < response.page.buckets[0].contents.length; i++) {
+              let content = response.page.buckets[0].contents[i]
+              let big_inning_date = content.utc.substring(0, 10)
+              let big_inning_start = content.utc
+              for (var j=0; j < content.streams.length; j++) {
+                let stream = content.streams[j]
+                let big_inning_end = new Date(content.utc)
+                big_inning_end.setSeconds(stream.durationInSeconds)
+                if ( !this.cache.bigInningSchedule[big_inning_date] || !this.cache.bigInningSchedule[big_inning_date].length ) {
+                  this.cache.bigInningSchedule[big_inning_date] = []
+                }
+                this.cache.bigInningSchedule[big_inning_date].push({
+                  start: big_inning_start, 
+                  end: big_inning_end
+                })
+                break
               }
-              this.cache.bigInningSchedule[this_datestring].push({
-                start: airing.accessRightsV2.live.startTime, 
-                end: airing.accessRightsV2.live.endTime
-              })
-            });
-          });
+            }
+          }
           this.debuglog(JSON.stringify(this.cache.bigInningSchedule))
 
           // Default cache period is 1 day from now
