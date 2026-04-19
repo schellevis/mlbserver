@@ -1,9 +1,9 @@
 diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
 new file mode 100644
-index 0000000..a47738f
+index 0000000..def6ffc
 --- /dev/null
 +++ b/.github/workflows/docker-ghcr.yml
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,57 @@
 +name: Build And Publish Docker Image
 +
 +on:
@@ -12,6 +12,8 @@ index 0000000..a47738f
 +      - "**"
 +    tags:
 +      - "*"
++  schedule:
++    - cron: '0 4 * * 1'
 +  workflow_dispatch:
 +
 +permissions:
@@ -61,10 +63,10 @@ index 0000000..a47738f
 +          labels: ${{ steps.meta.outputs.labels }}
 diff --git a/CLAUDE.md b/CLAUDE.md
 new file mode 100644
-index 0000000..2f55bb8
+index 0000000..8a3c89b
 --- /dev/null
 +++ b/CLAUDE.md
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,147 @@
 +# CLAUDE.md
 +
 +## Project Overview
@@ -187,6 +189,24 @@ index 0000000..2f55bb8
 +if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
 +```
 +
++### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
++
++**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
++
++Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
++
++`index.js` — after `getDayData()` call:
++```js
++if ( !cache_data ) {
++  cache_data = { dates: [] }
++}
++```
++
++`session.js` — tightened null check in skip marker logic:
++```js
++if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
++```
++
 +## Mental Model
 +
 +- `index.js` answers HTTP requests and rewrites media for clients.
@@ -194,18 +214,31 @@ index 0000000..2f55bb8
 +- Disk state keeps login/session/cache stable across restarts.
 +- ffmpeg handles anything beyond plain HLS proxying.
 +- Most features are variations on "resolve a baseball event to a playable local URL".
+diff --git a/README.md b/README.md
+index a9045f7..0a00b2b 100644
+--- a/README.md
++++ b/README.md
+@@ -14,7 +14,7 @@ npm install -g mlbserver
+ 
+ ### docker
+ ```
+-docker pull tonywagner/mlbserver:latest
++docker pull ghcr.io/schellevis/mlbserver:latest
+ ```
+ 
+ 
 diff --git a/game-changer-patches.patch b/game-changer-patches.patch
 new file mode 100644
-index 0000000..9def3e5
+index 0000000..6d47107
 --- /dev/null
 +++ b/game-changer-patches.patch
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,132 @@
 +diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
 +new file mode 100644
-+index 0000000..a47738f
++index 0000000..def6ffc
 +--- /dev/null
 ++++ b/.github/workflows/docker-ghcr.yml
-+@@ -0,0 +1,55 @@
++@@ -0,0 +1,57 @@
 ++name: Build And Publish Docker Image
 ++
 ++on:
@@ -214,6 +247,8 @@ index 0000000..9def3e5
 ++      - "**"
 ++    tags:
 ++      - "*"
+++  schedule:
+++    - cron: '0 4 * * 1'
 ++  workflow_dispatch:
 ++
 ++permissions:
@@ -263,10 +298,10 @@ index 0000000..9def3e5
 ++          labels: ${{ steps.meta.outputs.labels }}
 +diff --git a/CLAUDE.md b/CLAUDE.md
 +new file mode 100644
-+index 0000000..2f55bb8
++index 0000000..8a3c89b
 +--- /dev/null
 ++++ b/CLAUDE.md
-+@@ -0,0 +1,129 @@
++@@ -0,0 +1,147 @@
 ++# CLAUDE.md
 ++
 ++## Project Overview
@@ -329,7 +364,7 @@ index 0000000..9def3e5
 ++## Syncing with upstream
 ++
 ++Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
-++Local patches are stored in `game-changer-patches.pa
+++Local patches 
 \ No newline at end of file
 diff --git a/index.js b/index.js
 index 07424ac..88e04df 100755

@@ -14,7 +14,7 @@ npm install -g mlbserver
 
 ### docker
 ```
-docker pull tonywagner/mlbserver:latest
+docker pull ghcr.io/schellevis/mlbserver:latest
 ```
 
 

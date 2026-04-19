@@ -120,6 +120,10 @@ const really_boring = curr_game && (curr_game.leverage_index < 0.4)
 if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
 ```
 
+### README: Docker image
+
+**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
+
 ### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
 
 **Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
