@@ -1832,7 +1832,7 @@ class sessionClass {
         let currentDate = new Date()
         cache_data = await this.getDayData(gameDate)
 
-        if ( cache_data ) {
+        if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
           let nationalCount = 0
           let freeCount = 0
           let blackouts = {}

@@ -332,10 +332,20 @@ index 0000000..9def3e5
 ++Local patches are stored in `game-changer-patches.pa
 \ No newline at end of file
 diff --git a/index.js b/index.js
-index 07424ac..21eb575 100755
+index 07424ac..88e04df 100755
 --- a/index.js
 +++ b/index.js
-@@ -1676,6 +1676,15 @@ app.get('/', async function(req, res) {
+@@ -1611,6 +1611,9 @@ app.get('/', async function(req, res) {
+     }
+ 
+     var cache_data = await session.getDayData(gameDate, false, level_ids, team_ids)
++    if ( !cache_data ) {
++      cache_data = { dates: [] }
++    }
+ 
+     var linkType = VALID_LINK_TYPES[0]
+     if ( req.query.linkType ) {
+@@ -1676,6 +1679,15 @@ app.get('/', async function(req, res) {
        session.setScanMode(req.query.scan_mode)
      }
  
@@ -351,7 +361,7 @@ index 07424ac..21eb575 100755
      var content_protect = ''
      var content_protect_a = ''
      var content_protect_b = ''
-@@ -1696,10 +1705,10 @@ app.get('/', async function(req, res) {
+@@ -1696,10 +1708,10 @@ app.get('/', async function(req, res) {
      body += '</style><script type="text/javascript">' + "\n";
  
      // Define option variables in page
@@ -364,7 +374,7 @@ index 07424ac..21eb575 100755
  
      // Ajax function for multiview and highlights
      body += 'function makeGETRequest(url, callback){var request=new XMLHttpRequest();request.onreadystatechange=function(){if (request.readyState==4 && request.status==200){callback(request.responseText)}};request.open("GET", url);request.send();}' + "\n"
-@@ -1815,6 +1824,13 @@ app.get('/', async function(req, res) {
+@@ -1815,6 +1827,13 @@ app.get('/', async function(req, res) {
      }
      body += '</p>' + "\n"
  
@@ -379,7 +389,7 @@ index 07424ac..21eb575 100755
  
      // Rename some parameters before display links
 diff --git a/session.js b/session.js
-index 4762b10..9b3694b 100644
+index 4762b10..0715f0b 100644
 --- a/session.js
 +++ b/session.js
 @@ -1007,6 +1007,12 @@ class sessionClass {
@@ -409,6 +419,15 @@ index 4762b10..9b3694b 100644
    // Set the linkType
    // used for storing the desired page type across throughout site navigation
    setLinkType(x) {
+@@ -1819,7 +1832,7 @@ class sessionClass {
+         let currentDate = new Date()
+         cache_data = await this.getDayData(gameDate)
+ 
+-        if ( cache_data ) {
++        if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+           let nationalCount = 0
+           let freeCount = 0
+           let blackouts = {}
 @@ -5142,7 +5155,17 @@ class sessionClass {
                let run_differential_index = Math.max(-4, Math.min((home_score - away_score), 4)) + 4
                let inning_num_index = Math.min(inning_num, 9)

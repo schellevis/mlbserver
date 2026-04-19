@@ -120,6 +120,24 @@ const really_boring = curr_game && (curr_game.leverage_index < 0.4)
 if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
 ```
 
+### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
+
+**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
+
+Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
+
+`index.js` — after `getDayData()` call:
+```js
+if ( !cache_data ) {
+  cache_data = { dates: [] }
+}
+```
+
+`session.js` — tightened null check in skip marker logic:
+```js
+if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+```
+
 ## Mental Model
 
 - `index.js` answers HTTP requests and rewrites media for clients.

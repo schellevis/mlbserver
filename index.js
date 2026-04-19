@@ -1611,6 +1611,9 @@ app.get('/', async function(req, res) {
     }
 
     var cache_data = await session.getDayData(gameDate, false, level_ids, team_ids)
+    if ( !cache_data ) {
+      cache_data = { dates: [] }
+    }
 
     var linkType = VALID_LINK_TYPES[0]
     if ( req.query.linkType ) {
