@@ -63,10 +63,10 @@ index 0000000..def6ffc
 +          labels: ${{ steps.meta.outputs.labels }}
 diff --git a/CLAUDE.md b/CLAUDE.md
 new file mode 100644
-index 0000000..8a3c89b
+index 0000000..4e38965
 --- /dev/null
 +++ b/CLAUDE.md
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,151 @@
 +# CLAUDE.md
 +
 +## Project Overview
@@ -189,6 +189,10 @@ index 0000000..8a3c89b
 +if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
 +```
 +
++### README: Docker image
++
++**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
++
 +### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
 +
 +**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
@@ -215,7 +219,7 @@ index 0000000..8a3c89b
 +- ffmpeg handles anything beyond plain HLS proxying.
 +- Most features are variations on "resolve a baseball event to a playable local URL".
 diff --git a/README.md b/README.md
-index a9045f7..0a00b2b 100644
+index a9045f7..86d065c 100644
 --- a/README.md
 +++ b/README.md
 @@ -14,7 +14,7 @@ npm install -g mlbserver
@@ -227,12 +231,30 @@ index a9045f7..0a00b2b 100644
  ```
  
  
+@@ -90,6 +90,17 @@ h264_vaapi use VAAPI which is another abstraction API to access video accelerati
+ h264_videotoolbox use videotoolbox an API to access hardware on OS X
+ ```
+ 
++## Changes in this fork
++
++This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
++
++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
++- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
++- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
++- **Crash fix** — prevents server crash when the MLB schedule API returns no data (from [daslicious/mlbserver](https://github.com/daslicious/mlbserver))
++
++Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
++
+ ## Credits
+ 
+ https://github.com/tonycpsu/streamglob
 diff --git a/game-changer-patches.patch b/game-changer-patches.patch
 new file mode 100644
-index 0000000..6d47107
+index 0000000..c299243
 --- /dev/null
 +++ b/game-changer-patches.patch
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,242 @@
 +diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
 +new file mode 100644
 +index 0000000..def6ffc
@@ -298,10 +320,10 @@ index 0000000..6d47107
 ++          labels: ${{ steps.meta.outputs.labels }}
 +diff --git a/CLAUDE.md b/CLAUDE.md
 +new file mode 100644
-+index 0000000..8a3c89b
++index 0000000..4e38965
 +--- /dev/null
 ++++ b/CLAUDE.md
-+@@ -0,0 +1,147 @@
++@@ -0,0 +1,151 @@
 ++# CLAUDE.md
 ++
 ++## Project Overview
@@ -364,7 +386,117 @@ index 0000000..6d47107
 ++## Syncing with upstream
 ++
 ++Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
-++Local patches 
+++Local patches are stored in `game-changer-patches.patch`.
+++
+++```bash
+++git fetch upstream
+++git reset --hard upstream/master
+++git apply game-changer-patches.patch
+++# if conflicts:
+++git apply --3way game-changer-patches.patch
+++# after syncing, regenerate and commit the patch file:
+++git diff > game-changer-patches.patch
+++```
+++
+++Check upstream changes relevant to Game Changer before syncing:
+++```bash
+++git diff upstream/master...master -- session.js
+++```
+++
+++## Local Patches
+++
+++These changes are not in the upstream repo and are maintained via `game-changer-patches.patch`.
+++
+++### Game Changer: inning multiplier
+++
+++**File:** `session.js`, in `getBestGame()`, just before `games.push(`.
+++
+++Later innings weigh heavier when LI is comparable (6th: 1.1x, 9th: 2.0x, extra innings: 2.5x).
+++
+++```js
+++// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+++const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+++const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+++let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+++```
+++
+++### Game Changer: fav team boost
+++
+++**File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
+++
+++Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
+++
+++```js
+++// LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+++const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+++if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+++  leverage_index += FAV_TEAM_BOOST
+++}
+++```
+++
+++### Game Changer: switch mid-at-bat when current game is boring
+++
+++**File:** `session.js`, in `getBestGame()`, inside the `for (var i=0; i<best_games.length; i++)` loop.
+++
+++Switches immediately (without waiting for a new batter) when current game's LI < 0.4.
+++
+++```js
+++// LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+++const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+++if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+++```
+++
+++### README: Docker image
+++
+++**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
+++
+++### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
+++
+++**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
+++
+++Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
+++
+++`index.js` — after `getDayData()` call:
+++```js
+++if ( !cache_data ) {
+++  cache_data = { dates: [] }
+++}
+++```
+++
+++`session.js` — tightened null check in skip marker logic:
+++```js
+++if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+++```
+++
+++## Mental Model
+++
+++- `index.js` answers HTTP requests and rewrites media for clients.
+++- `session.js` knows how MLB works.
+++- Disk state keeps login/session/cache stable across restarts.
+++- ffmpeg handles anything beyond plain HLS proxying.
+++- Most features are variations on "resolve a baseball event to a playable local URL".
++diff --git a/README.md b/README.md
++index a9045f7..86d065c 100644
++--- a/README.md
+++++ b/README.md
++@@ -14,7 +14,7 @@ npm install -g mlbserver
++ 
++ ### docker
++ ```
++-docker pull tonywagner/mlbserver:latest
+++docker pull ghcr.io/schellevis/mlbserver:latest
++ ```
++ 
++ 
++@@ -90,6 +90,17 @@ h264_vaapi use VAAPI which is another abstraction API to access video accelerati
++ h264_videotoolbox use videotoolbox an API to access hardware on OS X
++ ```
++ 
+++## Changes in this fork
+++
+++This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
+++
+++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage in
 \ No newline at end of file
 diff --git a/index.js b/index.js
 index 07424ac..88e04df 100755
