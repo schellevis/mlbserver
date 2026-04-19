@@ -5051,6 +5051,8 @@ class sessionClass {
                 continue
               }
 
+              let in_break = false
+
               // Game is between innings
               if ( (inning_half == 'Middle') || (inning_half == 'End') || (outs == 3) ) {
                 if ( outs == 3 ) {
@@ -5096,17 +5098,21 @@ class sessionClass {
 
                   continue
                 }
+                in_break = true
               }
 
               let inning_state = inning_half + ',' + inning_num
               inning_states[game_pk] = inning_state
 
               // if the inning state has changed, assume a break
-              if ( (x < 3) && this.temp_cache.gamechanger[id].inning_states && (this.temp_cache.gamechanger[id].inning_states.length > 0) && this.temp_cache.gamechanger[id].inning_states[0][game_pk] && (inning_state != this.temp_cache.gamechanger[id].inning_states[0][game_pk]) ) {
-                this.debuglog(game_changer_title + teams + ' inning break detected')
-                omitted_games.break.push(teams)
-                this.setBreakExpiry(id, game_pk)
-                continue
+              if ( this.temp_cache.gamechanger[id].inning_states && (this.temp_cache.gamechanger[id].inning_states.length > 0) && this.temp_cache.gamechanger[id].inning_states[0][game_pk] && (inning_state != this.temp_cache.gamechanger[id].inning_states[0][game_pk]) ) {
+                if ( x < 3 ) {
+                  this.debuglog(game_changer_title + teams + ' inning break detected')
+                  omitted_games.break.push(teams)
+                  this.setBreakExpiry(id, game_pk)
+                  continue
+                }
+                in_break = true
               }
 
               // if the pitcher has changed, assume a break
@@ -5115,11 +5121,14 @@ class sessionClass {
               if ( cache_data.dates[0].games[i].linescore.defense && cache_data.dates[0].games[i].linescore.defense.pitcher && cache_data.dates[0].games[i].linescore.defense.pitcher.id ) {
                 //pitcher = cache_data.data.games.game[i].pitcher.id
                 pitcher = cache_data.dates[0].games[i].linescore.defense.pitcher.id
-                if ( (x < 3) && this.temp_cache.gamechanger[id].players && (this.temp_cache.gamechanger[id].players.length > 0) && this.temp_cache.gamechanger[id].players[0][game_pk] && (this.temp_cache.gamechanger[id].players[0][game_pk].pitcher != pitcher) ) {
-                  this.debuglog(game_changer_title + teams + ' pitching change break detected')
-                  omitted_games.pitching_change.push(teams)
-                  this.setBreakExpiry(id, game_pk)
-                  continue
+                if ( this.temp_cache.gamechanger[id].players && (this.temp_cache.gamechanger[id].players.length > 0) && this.temp_cache.gamechanger[id].players[0][game_pk] && (this.temp_cache.gamechanger[id].players[0][game_pk].pitcher != pitcher) ) {
+                  if ( x < 3 ) {
+                    this.debuglog(game_changer_title + teams + ' pitching change break detected')
+                    omitted_games.pitching_change.push(teams)
+                    this.setBreakExpiry(id, game_pk)
+                    continue
+                  }
+                  in_break = true
                 }
               }
 
@@ -5162,7 +5171,7 @@ class sessionClass {
 
               // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
               const FAV_TEAM_BOOST = this.credentials.fav_team_boost
-              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+              if ( !in_break && this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
                 this.debuglog(game_changer_title + teams + ' fav team boost applied')
                 leverage_index += FAV_TEAM_BOOST
               }

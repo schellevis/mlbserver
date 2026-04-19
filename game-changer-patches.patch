@@ -1,621 +1,695 @@
-diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
-new file mode 100644
-index 0000000..def6ffc
---- /dev/null
-+++ b/.github/workflows/docker-ghcr.yml
-@@ -0,0 +1,57 @@
-+name: Build And Publish Docker Image
-+
-+on:
-+  push:
-+    branches:
-+      - "**"
-+    tags:
-+      - "*"
-+  schedule:
-+    - cron: '0 4 * * 1'
-+  workflow_dispatch:
-+
-+permissions:
-+  contents: read
-+  packages: write
-+
-+env:
-+  REGISTRY: ghcr.io
-+  IMAGE_NAME: ${{ github.repository }}
-+
-+jobs:
-+  docker:
-+    runs-on: ubuntu-latest
-+
-+    steps:
-+      - name: Check Out Repository
-+        uses: actions/checkout@v4
-+
-+      - name: Log In To GHCR
-+        uses: docker/login-action@v3
-+        with:
-+          registry: ${{ env.REGISTRY }}
-+          username: ${{ github.actor }}
-+          password: ${{ secrets.GITHUB_TOKEN }}
-+
-+      - name: Extract Docker Metadata
-+        id: meta
-+        uses: docker/metadata-action@v5
-+        with:
-+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-+          tags: |
-+            type=ref,event=branch
-+            type=ref,event=tag
-+            type=sha
-+            type=raw,value=latest,enable={{is_default_branch}}
-+
-+      - name: Set Up Docker Buildx
-+        uses: docker/setup-buildx-action@v3
-+
-+      - name: Build And Push Image
-+        uses: docker/build-push-action@v6
-+        with:
-+          context: .
-+          file: ./Dockerfile
-+          push: true
-+          tags: ${{ steps.meta.outputs.tags }}
-+          labels: ${{ steps.meta.outputs.labels }}
-diff --git a/CLAUDE.md b/CLAUDE.md
-new file mode 100644
-index 0000000..4e38965
---- /dev/null
-+++ b/CLAUDE.md
-@@ -0,0 +1,151 @@
-+# CLAUDE.md
-+
-+## Project Overview
-+
-+`mlbserver` is a Node.js server that logs into MLB services and exposes a local web UI plus stream endpoints. No framework, no build step — nearly all logic lives in two files:
-+
-+- `index.js`: HTTP server, routes, HLS proxy/rewriter, UI generation, multiview, ffmpeg helpers.
-+- `session.js`: session/auth, cache, MLB API calls, game discovery, guide/channel export, skip markers, Stream Finder, Game Changer.
-+
-+## How To Run
-+
-+```bash
-+npm install
-+node index.js
-+```
-+
-+Docker: see `docker-compose.yml` and `docker-cli`. App on port `9999`, multiview on `10000`.
-+
-+## CLI Flags
-+
-+- `--env`: load config from environment variables instead of `credentials.json`
-+- `--cache` / `--session` / `--logout`: clear persisted state before starting
-+- `--ffmpeg_path`: override ffmpeg binary (default: `ffmpeg-static`)
-+- `--http_root`: mount app under a path prefix
-+- `--data_directory`: store all data/cache files at a custom path (Docker: `/mlbserver/data_directory`)
-+
-+## Where To Make Changes
-+
-+- Route behavior, playlist rewriting, UI, multiview → `index.js`
-+- Auth, API calls, game discovery, caching, export generation → `session.js`
-+- Deployment defaults → `Dockerfile`, `docker-compose.yml`
-+
-+## Persisted Files
-+
-+- `credentials.json`: MLB username/password, favorite teams
-+- `data/data.json`: tokens, device/session IDs, entitlements, ports
-+- `data/cookies.json`: cookie jar
-+- `cache/cache.json` + `cache/*.json`: API response cache
-+- `data/stream_finder_settings.json`: Stream Finder config
-+
-+## Refactor Risk Areas
-+
-+Be careful with:
-+- String-built playlist rewriting logic
-+- Auth/session persistence
-+- Cache expiry behavior
-+- ffmpeg command assembly
-+- Game Changer state transitions
-+- Audio-track fallback behavior
-+- Blackout filtering
-+
-+These are tightly coupled and often rely on upstream response quirks.
-+
-+## Important Notes
-+
-+- **Upstream bugs**: many issues come from MLB API/auth changes, not local code. Always distinguish local proxy bugs from upstream changes.
-+- **`request` is deprecated** but deeply embedded — do not casually replace it.
-+- **No automated tests** — verify manually: homepage loads, a stream resolves via `/stream.m3u8`, `/channels.m3u` and `/guide.xml` generate valid output, multiview starts.
-+
-+## Syncing with upstream
-+
-+Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
-+Local patches are stored in `game-changer-patches.patch`.
-+
-+```bash
-+git fetch upstream
-+git reset --hard upstream/master
-+git apply game-changer-patches.patch
-+# if conflicts:
-+git apply --3way game-changer-patches.patch
-+# after syncing, regenerate and commit the patch file:
-+git diff > game-changer-patches.patch
-+```
-+
-+Check upstream changes relevant to Game Changer before syncing:
-+```bash
-+git diff upstream/master...master -- session.js
-+```
-+
-+## Local Patches
-+
-+These changes are not in the upstream repo and are maintained via `game-changer-patches.patch`.
-+
-+### Game Changer: inning multiplier
-+
-+**File:** `session.js`, in `getBestGame()`, just before `games.push(`.
-+
-+Later innings weigh heavier when LI is comparable (6th: 1.1x, 9th: 2.0x, extra innings: 2.5x).
-+
-+```js
-+// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
-+const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
-+const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
-+let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
-+```
-+
-+### Game Changer: fav team boost
-+
-+**File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
-+
-+Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
-+
-+```js
-+// LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
-+const FAV_TEAM_BOOST = this.credentials.fav_team_boost
-+if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
-+  leverage_index += FAV_TEAM_BOOST
-+}
-+```
-+
-+### Game Changer: switch mid-at-bat when current game is boring
-+
-+**File:** `session.js`, in `getBestGame()`, inside the `for (var i=0; i<best_games.length; i++)` loop.
-+
-+Switches immediately (without waiting for a new batter) when current game's LI < 0.4.
-+
-+```js
-+// LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
-+const really_boring = curr_game && (curr_game.leverage_index < 0.4)
-+if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
-+```
-+
-+### README: Docker image
-+
-+**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
-+
-+### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
-+
-+**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
-+
-+Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
-+
-+`index.js` — after `getDayData()` call:
-+```js
-+if ( !cache_data ) {
-+  cache_data = { dates: [] }
-+}
-+```
-+
-+`session.js` — tightened null check in skip marker logic:
-+```js
-+if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
-+```
-+
-+## Mental Model
-+
-+- `index.js` answers HTTP requests and rewrites media for clients.
-+- `session.js` knows how MLB works.
-+- Disk state keeps login/session/cache stable across restarts.
-+- ffmpeg handles anything beyond plain HLS proxying.
-+- Most features are variations on "resolve a baseball event to a playable local URL".
-diff --git a/README.md b/README.md
-index a9045f7..7065fc7 100644
---- a/README.md
-+++ b/README.md
-@@ -5,6 +5,17 @@
- 
- # mlbserver
- 
-+## Changes in this fork
-+
-+This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
-+
-+- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
-+- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
-+- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
-+- **Crash fix** — prevents server crash when the MLB schedule API returns no data (from [daslicious/mlbserver](https://github.com/daslicious/mlbserver))
-+
-+Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
-+
- ## Installation
- 
- ### node-cli
-@@ -14,7 +25,7 @@ npm install -g mlbserver
- 
- ### docker
- ```
--docker pull tonywagner/mlbserver:latest
-+docker pull ghcr.io/schellevis/mlbserver:latest
- ```
- 
- 
 diff --git a/game-changer-patches.patch b/game-changer-patches.patch
-new file mode 100644
-index 0000000..ac19177
---- /dev/null
+index 2a60791..e69de29 100644
+--- a/game-changer-patches.patch
 +++ b/game-changer-patches.patch
-@@ -0,0 +1,236 @@
-+diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
-+new file mode 100644
-+index 0000000..def6ffc
-+--- /dev/null
-++++ b/.github/workflows/docker-ghcr.yml
-+@@ -0,0 +1,57 @@
-++name: Build And Publish Docker Image
-++
-++on:
-++  push:
-++    branches:
-++      - "**"
-++    tags:
-++      - "*"
-++  schedule:
-++    - cron: '0 4 * * 1'
-++  workflow_dispatch:
-++
-++permissions:
-++  contents: read
-++  packages: write
-++
-++env:
-++  REGISTRY: ghcr.io
-++  IMAGE_NAME: ${{ github.repository }}
-++
-++jobs:
-++  docker:
-++    runs-on: ubuntu-latest
-++
-++    steps:
-++      - name: Check Out Repository
-++        uses: actions/checkout@v4
-++
-++      - name: Log In To GHCR
-++        uses: docker/login-action@v3
-++        with:
-++          registry: ${{ env.REGISTRY }}
-++          username: ${{ github.actor }}
-++          password: ${{ secrets.GITHUB_TOKEN }}
-++
-++      - name: Extract Docker Metadata
-++        id: meta
-++        uses: docker/metadata-action@v5
-++        with:
-++          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-++          tags: |
-++            type=ref,event=branch
-++            type=ref,event=tag
-++            type=sha
-++            type=raw,value=latest,enable={{is_default_branch}}
-++
-++      - name: Set Up Docker Buildx
-++        uses: docker/setup-buildx-action@v3
-++
-++      - name: Build And Push Image
-++        uses: docker/build-push-action@v6
-++        with:
-++          context: .
-++          file: ./Dockerfile
-++          push: true
-++          tags: ${{ steps.meta.outputs.tags }}
-++          labels: ${{ steps.meta.outputs.labels }}
-+diff --git a/CLAUDE.md b/CLAUDE.md
-+new file mode 100644
-+index 0000000..4e38965
-+--- /dev/null
-++++ b/CLAUDE.md
-+@@ -0,0 +1,151 @@
-++# CLAUDE.md
-++
-++## Project Overview
-++
-++`mlbserver` is a Node.js server that logs into MLB services and exposes a local web UI plus stream endpoints. No framework, no build step — nearly all logic lives in two files:
-++
-++- `index.js`: HTTP server, routes, HLS proxy/rewriter, UI generation, multiview, ffmpeg helpers.
-++- `session.js`: session/auth, cache, MLB API calls, game discovery, guide/channel export, skip markers, Stream Finder, Game Changer.
-++
-++## How To Run
-++
-++```bash
-++npm install
-++node index.js
-++```
-++
-++Docker: see `docker-compose.yml` and `docker-cli`. App on port `9999`, multiview on `10000`.
-++
-++## CLI Flags
-++
-++- `--env`: load config from environment variables instead of `credentials.json`
-++- `--cache` / `--session` / `--logout`: clear persisted state before starting
-++- `--ffmpeg_path`: override ffmpeg binary (default: `ffmpeg-static`)
-++- `--http_root`: mount app under a path prefix
-++- `--data_directory`: store all data/cache files at a custom path (Docker: `/mlbserver/data_directory`)
-++
-++## Where To Make Changes
-++
-++- Route behavior, playlist rewriting, UI, multiview → `index.js`
-++- Auth, API calls, game discovery, caching, export generation → `session.js`
-++- Deployment defaults → `Dockerfile`, `docker-compose.yml`
-++
-++## Persisted Files
-++
-++- `credentials.json`: MLB username/password, favorite teams
-++- `data/data.json`: tokens, device/session IDs, entitlements, ports
-++- `data/cookies.json`: cookie jar
-++- `cache/cache.json` + `cache/*.json`: API response cache
-++- `data/stream_finder_settings.json`: Stream Finder config
-++
-++## Refactor Risk Areas
-++
-++Be careful with:
-++- String-built playlist rewriting logic
-++- Auth/session persistence
-++- Cache expiry behavior
-++- ffmpeg command assembly
-++- Game Changer state transitions
-++- Audio-track fallback behavior
-++- Blackout filtering
-++
-++These are tightly coupled and often rely on upstream response quirks.
-++
-++## Important Notes
-++
-++- **Upstream bugs**: many issues come from MLB API/auth changes, not local code. Always distinguish local proxy bugs from upstream changes.
-++- **`request` is deprecated** but deeply embedded — do not casually replace it.
-++- **No automated tests** — verify manually: homepage loads, a stream resolves via `/stream.m3u8`, `/channels.m3u` and `/guide.xml` generate valid output, multiview starts.
-++
-++## Syncing with upstream
-++
-++Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
-++Local patches are stored in `game-changer-patches.patch`.
-++
-++```bash
-++git fetch upstream
-++git reset --hard upstream/master
-++git apply game-changer-patches.patch
-++# if conflicts:
-++git apply --3way game-changer-patches.patch
-++# after syncing, regenerate and commit the patch file:
-++git diff > game-changer-patches.patch
-++```
-++
-++Check upstream changes relevant to Game Changer before syncing:
-++```bash
-++git diff upstream/master...master -- session.js
-++```
-++
-++## Local Patches
-++
-++These changes are not in the upstream repo and are maintained via `game-changer-patches.patch`.
-++
-++### Game Changer: inning multiplier
-++
-++**File:** `session.js`, in `getBestGame()`, just before `games.push(`.
-++
-++Later innings weigh heavier when LI is comparable (6th: 1.1x, 9th: 2.0x, extra innings: 2.5x).
-++
-++```js
-++// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
-++const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
-++const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
-++let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
-++```
-++
-++### Game Changer: fav team boost
-++
-++**File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
-++
-++Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
-++
-++```js
-++// LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
-++const FAV_TEAM_BOOST = this.credentials.fav_team_boost
-++if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
-++  leverage_index += FAV_TEAM_BOOST
-++}
-++```
-++
-++### Game Changer: switch mid-at-bat when current game is boring
-++
-++**File:** `session.js`, in `getBestGame()`, inside the `for (var i=0; i<best_games.length; i++)` loop.
-++
-++Switches immediately (without waiting for a new batter) when current game's LI < 0.4.
-++
-++```js
-++// LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
-++const really_boring = curr_game && (curr_game.leverage_index < 0.4)
-++if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
-++```
-++
-++### README: Docker image
-++
-++**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
-++
-++### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
-++
-++**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
-++
-++Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
-++
-++`index.js` — after `getDayData()` call:
-++```js
-++if ( !cache_data ) {
-++  cache_data = { dates: [] }
-++}
-++```
-++
-++`session.js` — tightened null check in skip marker logic:
-++```js
-++if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
-++```
-++
-++## Mental Model
-++
-++- `index.js` answers HTTP requests and rewrites media for clients.
-++- `session.js` knows how MLB works.
-++- Disk state keeps login/session/cache stable across restarts.
-++- ffmpeg handles anything beyond plain HLS proxying.
-++- Most features are variations on "resolve a baseball event to a playable local URL".
-+diff --git a/README.md b/README.md
-+index a9045f7..7065fc7 100644
-+--- a/README.md
-++++ b/README.md
-+@@ -5,6 +5,17 @@
-+ 
-+ # mlbserver
-+ 
-++## Changes in this fork
-++
-++This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
-++
-++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
-++- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
-++- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
-++- **Crash fix** — p
-\ No newline at end of file
-diff --git a/index.js b/index.js
-index 07424ac..88e04df 100755
---- a/index.js
-+++ b/index.js
-@@ -1611,6 +1611,9 @@ app.get('/', async function(req, res) {
-     }
- 
-     var cache_data = await session.getDayData(gameDate, false, level_ids, team_ids)
-+    if ( !cache_data ) {
-+      cache_data = { dates: [] }
-+    }
- 
-     var linkType = VALID_LINK_TYPES[0]
-     if ( req.query.linkType ) {
-@@ -1676,6 +1679,15 @@ app.get('/', async function(req, res) {
-       session.setScanMode(req.query.scan_mode)
-     }
- 
-+    var fav_team_boost = session.credentials.fav_team_boost
-+    if ( req.query.fav_team_boost !== undefined ) {
-+      let boost_val = parseFloat(req.query.fav_team_boost)
-+      if ( !isNaN(boost_val) && (boost_val != session.credentials.fav_team_boost) ) {
-+        fav_team_boost = boost_val
-+        session.setFavTeamBoost(boost_val)
-+      }
-+    }
-+
-     var content_protect = ''
-     var content_protect_a = ''
-     var content_protect_b = ''
-@@ -1696,10 +1708,10 @@ app.get('/', async function(req, res) {
-     body += '</style><script type="text/javascript">' + "\n";
- 
-     // Define option variables in page
--    body += 'var date="' + gameDate + '";var level="' + level + '";var org="' + org + '";var mediaType="' + mediaType + '";var resolution="' + resolution + '";var audio_track="' + audio_track + '";var captions="' + captions + '";var force_vod="' + force_vod + '";var inning_half="' + inning_half + '";var inning_number="' + inning_number + '";var skip="' + skip + '";var skip_adjust="' + skip_adjust + '";var pad="' + pad + '";var linkType="' + linkType + '";var startFrom="' + startFrom + '";var scores="' + scores + '";var controls="' + controls + '";var scan_mode="' + scan_mode + '";var content_protect="' + content_protect + '";' + "\n"
-+    body += 'var date="' + gameDate + '";var level="' + level + '";var org="' + org + '";var mediaType="' + mediaType + '";var resolution="' + resolution + '";var audio_track="' + audio_track + '";var captions="' + captions + '";var force_vod="' + force_vod + '";var inning_half="' + inning_half + '";var inning_number="' + inning_number + '";var skip="' + skip + '";var skip_adjust="' + skip_adjust + '";var pad="' + pad + '";var linkType="' + linkType + '";var startFrom="' + startFrom + '";var scores="' + scores + '";var controls="' + controls + '";var scan_mode="' + scan_mode + '";var fav_team_boost=' + fav_team_boost + ';var content_protect="' + content_protect + '";' + "\n"
- 
-     // Reload function, called after options change
--    body += 'var defaultDate="' + today + '";var curDate=new Date();var utcHours=curDate.getUTCHours();if ((utcHours >= ' + todayUTCHours + ') && (utcHours < ' + YESTERDAY_UTC_HOURS + ')){defaultDate="' + yesterday + '"}function reload(){var newurl="' + http_root + '/?";if (date != defaultDate){var urldate=date;if (date == "' + today + '"){urldate="today"}else if (date == "' + yesterday + '"){urldate="yesterday"}newurl+="date="+urldate+"&"}if (level != "' + default_level + '"){newurl+="level="+encodeURIComponent(level)+"&"}if (org != "All"){newurl+="org="+encodeURIComponent(org)+"&"}if (mediaType != "' + VALID_MEDIA_TYPES[0] + '"){newurl+="mediaType="+mediaType+"&"}if (mediaType=="Video"){if (resolution != "' + VALID_RESOLUTIONS[0] + '"){newurl+="resolution="+resolution+"&"}if (audio_track != "' + VALID_AUDIO_TRACKS[0] + '"){newurl+="audio_track="+encodeURIComponent(audio_track)+"&"}else if (resolution == "none"){newurl+="audio_track="+encodeURIComponent("' + VALID_AUDIO_TRACKS[2] + '")+"&"}if (captions != "' + VALID_CAPTIONS[0] + '"){newurl+="captions="+encodeURIComponent(captions)+"&"}if (inning_half != "' + VALID_INNING_HALF[0] + '"){newurl+="inning_half="+inning_half+"&"}if (inning_number != "' + VALID_INNING_NUMBER[0] + '"){newurl+="inning_number="+inning_number+"&"}if (skip != "' + VALID_SKIP[0] + '"){newurl+="skip="+skip+"&";if (skip_adjust != "' + DEFAULT_SKIP_ADJUST + '"){newurl+="skip_adjust="+skip_adjust+"&"}}}if (pad != "' + VALID_PAD[0] + '"){newurl+="pad="+pad+"&";}if (linkType != "' + VALID_LINK_TYPES[0] + '"){newurl+="linkType="+linkType+"&"}if (linkType=="' + VALID_LINK_TYPES[0] + '"){if (startFrom != "' + VALID_START_FROM[0] + '"){newurl+="startFrom="+startFrom+"&"}if (controls != "' + VALID_CONTROLS[0] + '"){newurl+="controls="+controls+"&"}}if (linkType=="Stream"){if (force_vod != "' + VALID_FORCE_VOD[0] + '"){newurl+="force_vod="+force_vod+"&"}}if (scores != "' + VALID_SCORES[0] + '"){newurl+="scores="+scores+"&"}if (scan_mode != "' + session.data.scan_mode + '"){newurl+="scan_mode="+scan_mode+"&"}if (content_protect != ""){newurl+="content_protect="+content_protect+"&"}window.location=newurl.substring(0,newurl.length-1)}' + "\n"
-+    body += 'var defaultDate="' + today + '";var curDate=new Date();var utcHours=curDate.getUTCHours();if ((utcHours >= ' + todayUTCHours + ') && (utcHours < ' + YESTERDAY_UTC_HOURS + ')){defaultDate="' + yesterday + '"}function reload(){var newurl="' + http_root + '/?";if (date != defaultDate){var urldate=date;if (date == "' + today + '"){urldate="today"}else if (date == "' + yesterday + '"){urldate="yesterday"}newurl+="date="+urldate+"&"}if (level != "' + default_level + '"){newurl+="level="+encodeURIComponent(level)+"&"}if (org != "All"){newurl+="org="+encodeURIComponent(org)+"&"}if (mediaType != "' + VALID_MEDIA_TYPES[0] + '"){newurl+="mediaType="+mediaType+"&"}if (mediaType=="Video"){if (resolution != "' + VALID_RESOLUTIONS[0] + '"){newurl+="resolution="+resolution+"&"}if (audio_track != "' + VALID_AUDIO_TRACKS[0] + '"){newurl+="audio_track="+encodeURIComponent(audio_track)+"&"}else if (resolution == "none"){newurl+="audio_track="+encodeURIComponent("' + VALID_AUDIO_TRACKS[2] + '")+"&"}if (captions != "' + VALID_CAPTIONS[0] + '"){newurl+="captions="+encodeURIComponent(captions)+"&"}if (inning_half != "' + VALID_INNING_HALF[0] + '"){newurl+="inning_half="+inning_half+"&"}if (inning_number != "' + VALID_INNING_NUMBER[0] + '"){newurl+="inning_number="+inning_number+"&"}if (skip != "' + VALID_SKIP[0] + '"){newurl+="skip="+skip+"&";if (skip_adjust != "' + DEFAULT_SKIP_ADJUST + '"){newurl+="skip_adjust="+skip_adjust+"&"}}}if (pad != "' + VALID_PAD[0] + '"){newurl+="pad="+pad+"&";}if (linkType != "' + VALID_LINK_TYPES[0] + '"){newurl+="linkType="+linkType+"&"}if (linkType=="' + VALID_LINK_TYPES[0] + '"){if (startFrom != "' + VALID_START_FROM[0] + '"){newurl+="startFrom="+startFrom+"&"}if (controls != "' + VALID_CONTROLS[0] + '"){newurl+="controls="+controls+"&"}}if (linkType=="Stream"){if (force_vod != "' + VALID_FORCE_VOD[0] + '"){newurl+="force_vod="+force_vod+"&"}}if (scores != "' + VALID_SCORES[0] + '"){newurl+="scores="+scores+"&"}if (scan_mode != "' + session.data.scan_mode + '"){newurl+="scan_mode="+scan_mode+"&"}if (fav_team_boost != ' + fav_team_boost + '){newurl+="fav_team_boost="+fav_team_boost+"&"}if (content_protect != ""){newurl+="content_protect="+content_protect+"&"}window.location=newurl.substring(0,newurl.length-1)}' + "\n"
- 
-     // Ajax function for multiview and highlights
-     body += 'function makeGETRequest(url, callback){var request=new XMLHttpRequest();request.onreadystatechange=function(){if (request.readyState==4 && request.status==200){callback(request.responseText)}};request.open("GET", url);request.send();}' + "\n"
-@@ -1815,6 +1827,13 @@ app.get('/', async function(req, res) {
-     }
-     body += '</p>' + "\n"
- 
-+    if ( session.credentials.fav_teams && session.credentials.fav_teams.length > 0 && session.credentials.fav_teams[0] != '' ) {
-+      body += '<p><span class="tooltip">Fav team boost<span class="tooltiptext">LI bonus added to Game Changer games involving your favorite team(s) (' + session.credentials.fav_teams.toString() + '). 0 = no preference, 0.3 = default, 2.0 = always prefer. Bases loaded at another team (LI ~2+) still beats a low-action fav game.</span></span>: '
-+      body += '<input type="range" id="fav_team_boost_slider" min="0" max="2" step="0.1" value="' + fav_team_boost + '" style="vertical-align:middle;width:150px;cursor:pointer" oninput="fav_team_boost=parseFloat(this.value);document.getElementById(\'fav_boost_val\').textContent=fav_team_boost.toFixed(1)" onchange="reload()"/> '
-+      body += '<span id="fav_boost_val">' + fav_team_boost.toFixed(1) + '</span>'
-+      body += '</p>' + "\n"
-+    }
-+
-     body += "<table>" + "\n"
- 
-     // Rename some parameters before display links
+@@ -1,621 +0,0 @@
+-diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
+-new file mode 100644
+-index 0000000..def6ffc
+---- /dev/null
+-+++ b/.github/workflows/docker-ghcr.yml
+-@@ -0,0 +1,57 @@
+-+name: Build And Publish Docker Image
+-+
+-+on:
+-+  push:
+-+    branches:
+-+      - "**"
+-+    tags:
+-+      - "*"
+-+  schedule:
+-+    - cron: '0 4 * * 1'
+-+  workflow_dispatch:
+-+
+-+permissions:
+-+  contents: read
+-+  packages: write
+-+
+-+env:
+-+  REGISTRY: ghcr.io
+-+  IMAGE_NAME: ${{ github.repository }}
+-+
+-+jobs:
+-+  docker:
+-+    runs-on: ubuntu-latest
+-+
+-+    steps:
+-+      - name: Check Out Repository
+-+        uses: actions/checkout@v4
+-+
+-+      - name: Log In To GHCR
+-+        uses: docker/login-action@v3
+-+        with:
+-+          registry: ${{ env.REGISTRY }}
+-+          username: ${{ github.actor }}
+-+          password: ${{ secrets.GITHUB_TOKEN }}
+-+
+-+      - name: Extract Docker Metadata
+-+        id: meta
+-+        uses: docker/metadata-action@v5
+-+        with:
+-+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+-+          tags: |
+-+            type=ref,event=branch
+-+            type=ref,event=tag
+-+            type=sha
+-+            type=raw,value=latest,enable={{is_default_branch}}
+-+
+-+      - name: Set Up Docker Buildx
+-+        uses: docker/setup-buildx-action@v3
+-+
+-+      - name: Build And Push Image
+-+        uses: docker/build-push-action@v6
+-+        with:
+-+          context: .
+-+          file: ./Dockerfile
+-+          push: true
+-+          tags: ${{ steps.meta.outputs.tags }}
+-+          labels: ${{ steps.meta.outputs.labels }}
+-diff --git a/CLAUDE.md b/CLAUDE.md
+-new file mode 100644
+-index 0000000..4e38965
+---- /dev/null
+-+++ b/CLAUDE.md
+-@@ -0,0 +1,151 @@
+-+# CLAUDE.md
+-+
+-+## Project Overview
+-+
+-+`mlbserver` is a Node.js server that logs into MLB services and exposes a local web UI plus stream endpoints. No framework, no build step — nearly all logic lives in two files:
+-+
+-+- `index.js`: HTTP server, routes, HLS proxy/rewriter, UI generation, multiview, ffmpeg helpers.
+-+- `session.js`: session/auth, cache, MLB API calls, game discovery, guide/channel export, skip markers, Stream Finder, Game Changer.
+-+
+-+## How To Run
+-+
+-+```bash
+-+npm install
+-+node index.js
+-+```
+-+
+-+Docker: see `docker-compose.yml` and `docker-cli`. App on port `9999`, multiview on `10000`.
+-+
+-+## CLI Flags
+-+
+-+- `--env`: load config from environment variables instead of `credentials.json`
+-+- `--cache` / `--session` / `--logout`: clear persisted state before starting
+-+- `--ffmpeg_path`: override ffmpeg binary (default: `ffmpeg-static`)
+-+- `--http_root`: mount app under a path prefix
+-+- `--data_directory`: store all data/cache files at a custom path (Docker: `/mlbserver/data_directory`)
+-+
+-+## Where To Make Changes
+-+
+-+- Route behavior, playlist rewriting, UI, multiview → `index.js`
+-+- Auth, API calls, game discovery, caching, export generation → `session.js`
+-+- Deployment defaults → `Dockerfile`, `docker-compose.yml`
+-+
+-+## Persisted Files
+-+
+-+- `credentials.json`: MLB username/password, favorite teams
+-+- `data/data.json`: tokens, device/session IDs, entitlements, ports
+-+- `data/cookies.json`: cookie jar
+-+- `cache/cache.json` + `cache/*.json`: API response cache
+-+- `data/stream_finder_settings.json`: Stream Finder config
+-+
+-+## Refactor Risk Areas
+-+
+-+Be careful with:
+-+- String-built playlist rewriting logic
+-+- Auth/session persistence
+-+- Cache expiry behavior
+-+- ffmpeg command assembly
+-+- Game Changer state transitions
+-+- Audio-track fallback behavior
+-+- Blackout filtering
+-+
+-+These are tightly coupled and often rely on upstream response quirks.
+-+
+-+## Important Notes
+-+
+-+- **Upstream bugs**: many issues come from MLB API/auth changes, not local code. Always distinguish local proxy bugs from upstream changes.
+-+- **`request` is deprecated** but deeply embedded — do not casually replace it.
+-+- **No automated tests** — verify manually: homepage loads, a stream resolves via `/stream.m3u8`, `/channels.m3u` and `/guide.xml` generate valid output, multiview starts.
+-+
+-+## Syncing with upstream
+-+
+-+Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
+-+Local patches are stored in `game-changer-patches.patch`.
+-+
+-+```bash
+-+git fetch upstream
+-+git reset --hard upstream/master
+-+git apply game-changer-patches.patch
+-+# if conflicts:
+-+git apply --3way game-changer-patches.patch
+-+# after syncing, regenerate and commit the patch file:
+-+git diff > game-changer-patches.patch
+-+```
+-+
+-+Check upstream changes relevant to Game Changer before syncing:
+-+```bash
+-+git diff upstream/master...master -- session.js
+-+```
+-+
+-+## Local Patches
+-+
+-+These changes are not in the upstream repo and are maintained via `game-changer-patches.patch`.
+-+
+-+### Game Changer: inning multiplier
+-+
+-+**File:** `session.js`, in `getBestGame()`, just before `games.push(`.
+-+
+-+Later innings weigh heavier when LI is comparable (6th: 1.1x, 9th: 2.0x, extra innings: 2.5x).
+-+
+-+```js
+-+// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+-+const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+-+const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+-+let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+-+```
+-+
+-+### Game Changer: fav team boost
+-+
+-+**File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
+-+
+-+Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
+-+
+-+```js
+-+// LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+-+const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+-+if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+-+  leverage_index += FAV_TEAM_BOOST
+-+}
+-+```
+-+
+-+### Game Changer: switch mid-at-bat when current game is boring
+-+
+-+**File:** `session.js`, in `getBestGame()`, inside the `for (var i=0; i<best_games.length; i++)` loop.
+-+
+-+Switches immediately (without waiting for a new batter) when current game's LI < 0.4.
+-+
+-+```js
+-+// LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+-+const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+-+if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+-+```
+-+
+-+### README: Docker image
+-+
+-+**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
+-+
+-+### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
+-+
+-+**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
+-+
+-+Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
+-+
+-+`index.js` — after `getDayData()` call:
+-+```js
+-+if ( !cache_data ) {
+-+  cache_data = { dates: [] }
+-+}
+-+```
+-+
+-+`session.js` — tightened null check in skip marker logic:
+-+```js
+-+if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+-+```
+-+
+-+## Mental Model
+-+
+-+- `index.js` answers HTTP requests and rewrites media for clients.
+-+- `session.js` knows how MLB works.
+-+- Disk state keeps login/session/cache stable across restarts.
+-+- ffmpeg handles anything beyond plain HLS proxying.
+-+- Most features are variations on "resolve a baseball event to a playable local URL".
+-diff --git a/README.md b/README.md
+-index a9045f7..7065fc7 100644
+---- a/README.md
+-+++ b/README.md
+-@@ -5,6 +5,17 @@
+- 
+- # mlbserver
+- 
+-+## Changes in this fork
+-+
+-+This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
+-+
+-+- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
+-+- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
+-+- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
+-+- **Crash fix** — prevents server crash when the MLB schedule API returns no data (from [daslicious/mlbserver](https://github.com/daslicious/mlbserver))
+-+
+-+Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
+-+
+- ## Installation
+- 
+- ### node-cli
+-@@ -14,7 +25,7 @@ npm install -g mlbserver
+- 
+- ### docker
+- ```
+--docker pull tonywagner/mlbserver:latest
+-+docker pull ghcr.io/schellevis/mlbserver:latest
+- ```
+- 
+- 
+-diff --git a/game-changer-patches.patch b/game-changer-patches.patch
+-new file mode 100644
+-index 0000000..ac19177
+---- /dev/null
+-+++ b/game-changer-patches.patch
+-@@ -0,0 +1,236 @@
+-+diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
+-+new file mode 100644
+-+index 0000000..def6ffc
+-+--- /dev/null
+-++++ b/.github/workflows/docker-ghcr.yml
+-+@@ -0,0 +1,57 @@
+-++name: Build And Publish Docker Image
+-++
+-++on:
+-++  push:
+-++    branches:
+-++      - "**"
+-++    tags:
+-++      - "*"
+-++  schedule:
+-++    - cron: '0 4 * * 1'
+-++  workflow_dispatch:
+-++
+-++permissions:
+-++  contents: read
+-++  packages: write
+-++
+-++env:
+-++  REGISTRY: ghcr.io
+-++  IMAGE_NAME: ${{ github.repository }}
+-++
+-++jobs:
+-++  docker:
+-++    runs-on: ubuntu-latest
+-++
+-++    steps:
+-++      - name: Check Out Repository
+-++        uses: actions/checkout@v4
+-++
+-++      - name: Log In To GHCR
+-++        uses: docker/login-action@v3
+-++        with:
+-++          registry: ${{ env.REGISTRY }}
+-++          username: ${{ github.actor }}
+-++          password: ${{ secrets.GITHUB_TOKEN }}
+-++
+-++      - name: Extract Docker Metadata
+-++        id: meta
+-++        uses: docker/metadata-action@v5
+-++        with:
+-++          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+-++          tags: |
+-++            type=ref,event=branch
+-++            type=ref,event=tag
+-++            type=sha
+-++            type=raw,value=latest,enable={{is_default_branch}}
+-++
+-++      - name: Set Up Docker Buildx
+-++        uses: docker/setup-buildx-action@v3
+-++
+-++      - name: Build And Push Image
+-++        uses: docker/build-push-action@v6
+-++        with:
+-++          context: .
+-++          file: ./Dockerfile
+-++          push: true
+-++          tags: ${{ steps.meta.outputs.tags }}
+-++          labels: ${{ steps.meta.outputs.labels }}
+-+diff --git a/CLAUDE.md b/CLAUDE.md
+-+new file mode 100644
+-+index 0000000..4e38965
+-+--- /dev/null
+-++++ b/CLAUDE.md
+-+@@ -0,0 +1,151 @@
+-++# CLAUDE.md
+-++
+-++## Project Overview
+-++
+-++`mlbserver` is a Node.js server that logs into MLB services and exposes a local web UI plus stream endpoints. No framework, no build step — nearly all logic lives in two files:
+-++
+-++- `index.js`: HTTP server, routes, HLS proxy/rewriter, UI generation, multiview, ffmpeg helpers.
+-++- `session.js`: session/auth, cache, MLB API calls, game discovery, guide/channel export, skip markers, Stream Finder, Game Changer.
+-++
+-++## How To Run
+-++
+-++```bash
+-++npm install
+-++node index.js
+-++```
+-++
+-++Docker: see `docker-compose.yml` and `docker-cli`. App on port `9999`, multiview on `10000`.
+-++
+-++## CLI Flags
+-++
+-++- `--env`: load config from environment variables instead of `credentials.json`
+-++- `--cache` / `--session` / `--logout`: clear persisted state before starting
+-++- `--ffmpeg_path`: override ffmpeg binary (default: `ffmpeg-static`)
+-++- `--http_root`: mount app under a path prefix
+-++- `--data_directory`: store all data/cache files at a custom path (Docker: `/mlbserver/data_directory`)
+-++
+-++## Where To Make Changes
+-++
+-++- Route behavior, playlist rewriting, UI, multiview → `index.js`
+-++- Auth, API calls, game discovery, caching, export generation → `session.js`
+-++- Deployment defaults → `Dockerfile`, `docker-compose.yml`
+-++
+-++## Persisted Files
+-++
+-++- `credentials.json`: MLB username/password, favorite teams
+-++- `data/data.json`: tokens, device/session IDs, entitlements, ports
+-++- `data/cookies.json`: cookie jar
+-++- `cache/cache.json` + `cache/*.json`: API response cache
+-++- `data/stream_finder_settings.json`: Stream Finder config
+-++
+-++## Refactor Risk Areas
+-++
+-++Be careful with:
+-++- String-built playlist rewriting logic
+-++- Auth/session persistence
+-++- Cache expiry behavior
+-++- ffmpeg command assembly
+-++- Game Changer state transitions
+-++- Audio-track fallback behavior
+-++- Blackout filtering
+-++
+-++These are tightly coupled and often rely on upstream response quirks.
+-++
+-++## Important Notes
+-++
+-++- **Upstream bugs**: many issues come from MLB API/auth changes, not local code. Always distinguish local proxy bugs from upstream changes.
+-++- **`request` is deprecated** but deeply embedded — do not casually replace it.
+-++- **No automated tests** — verify manually: homepage loads, a stream resolves via `/stream.m3u8`, `/channels.m3u` and `/guide.xml` generate valid output, multiview starts.
+-++
+-++## Syncing with upstream
+-++
+-++Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
+-++Local patches are stored in `game-changer-patches.patch`.
+-++
+-++```bash
+-++git fetch upstream
+-++git reset --hard upstream/master
+-++git apply game-changer-patches.patch
+-++# if conflicts:
+-++git apply --3way game-changer-patches.patch
+-++# after syncing, regenerate and commit the patch file:
+-++git diff > game-changer-patches.patch
+-++```
+-++
+-++Check upstream changes relevant to Game Changer before syncing:
+-++```bash
+-++git diff upstream/master...master -- session.js
+-++```
+-++
+-++## Local Patches
+-++
+-++These changes are not in the upstream repo and are maintained via `game-changer-patches.patch`.
+-++
+-++### Game Changer: inning multiplier
+-++
+-++**File:** `session.js`, in `getBestGame()`, just before `games.push(`.
+-++
+-++Later innings weigh heavier when LI is comparable (6th: 1.1x, 9th: 2.0x, extra innings: 2.5x).
+-++
+-++```js
+-++// LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+-++const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+-++const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+-++let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+-++```
+-++
+-++### Game Changer: fav team boost
+-++
+-++**File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
+-++
+-++Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
+-++
+-++```js
+-++// LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+-++const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+-++if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+-++  leverage_index += FAV_TEAM_BOOST
+-++}
+-++```
+-++
+-++### Game Changer: switch mid-at-bat when current game is boring
+-++
+-++**File:** `session.js`, in `getBestGame()`, inside the `for (var i=0; i<best_games.length; i++)` loop.
+-++
+-++Switches immediately (without waiting for a new batter) when current game's LI < 0.4.
+-++
+-++```js
+-++// LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+-++const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+-++if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+-++```
+-++
+-++### README: Docker image
+-++
+-++**File:** `README.md` — docker pull verwijst naar `ghcr.io/schellevis/mlbserver:latest` in plaats van upstream `tonywagner/mlbserver`.
+-++
+-++### Crash fix: null cache_data from MLB schedule API (from daslicious/mlbserver)
+-++
+-++**Files:** `index.js` (homepage handler), `session.js` (skip marker logic).
+-++
+-++Prevents crash when `getDayData()` returns null (e.g. MLB API outage or no games scheduled).
+-++
+-++`index.js` — after `getDayData()` call:
+-++```js
+-++if ( !cache_data ) {
+-++  cache_data = { dates: [] }
+-++}
+-++```
+-++
+-++`session.js` — tightened null check in skip marker logic:
+-++```js
+-++if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+-++```
+-++
+-++## Mental Model
+-++
+-++- `index.js` answers HTTP requests and rewrites media for clients.
+-++- `session.js` knows how MLB works.
+-++- Disk state keeps login/session/cache stable across restarts.
+-++- ffmpeg handles anything beyond plain HLS proxying.
+-++- Most features are variations on "resolve a baseball event to a playable local URL".
+-+diff --git a/README.md b/README.md
+-+index a9045f7..7065fc7 100644
+-+--- a/README.md
+-++++ b/README.md
+-+@@ -5,6 +5,17 @@
+-+ 
+-+ # mlbserver
+-+ 
+-++## Changes in this fork
+-++
+-++This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
+-++
+-++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
+-++- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
+-++- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
+-++- **Crash fix** — p
+-\ No newline at end of file
+-diff --git a/index.js b/index.js
+-index 07424ac..88e04df 100755
+---- a/index.js
+-+++ b/index.js
+-@@ -1611,6 +1611,9 @@ app.get('/', async function(req, res) {
+-     }
+- 
+-     var cache_data = await session.getDayData(gameDate, false, level_ids, team_ids)
+-+    if ( !cache_data ) {
+-+      cache_data = { dates: [] }
+-+    }
+- 
+-     var linkType = VALID_LINK_TYPES[0]
+-     if ( req.query.linkType ) {
+-@@ -1676,6 +1679,15 @@ app.get('/', async function(req, res) {
+-       session.setScanMode(req.query.scan_mode)
+-     }
+- 
+-+    var fav_team_boost = session.credentials.fav_team_boost
+-+    if ( req.query.fav_team_boost !== undefined ) {
+-+      let boost_val = parseFloat(req.query.fav_team_boost)
+-+      if ( !isNaN(boost_val) && (boost_val != session.credentials.fav_team_boost) ) {
+-+        fav_team_boost = boost_val
+-+        session.setFavTeamBoost(boost_val)
+-+      }
+-+    }
+-+
+-     var content_protect = ''
+-     var content_protect_a = ''
+-     var content_protect_b = ''
+-@@ -1696,10 +1708,10 @@ app.get('/', async function(req, res) {
+-     body += '</style><script type="text/javascript">' + "\n";
+- 
+-     // Define option variables in page
+--    body += 'var date="' + gameDate + '";var level="' + level + '";var org="' + org + '";var mediaType="' + mediaType + '";var resolution="' + resolution + '";var audio_track="' + audio_track + '";var captions="' + captions + '";var force_vod="' + force_vod + '";var inning_half="' + inning_half + '";var inning_number="' + inning_number + '";var skip="' + skip + '";var skip_adjust="' + skip_adjust + '";var pad="' + pad + '";var linkType="' + linkType + '";var startFrom="' + startFrom + '";var scores="' + scores + '";var controls="' + controls + '";var scan_mode="' + scan_mode + '";var content_protect="' + content_protect + '";' + "\n"
+-+    body += 'var date="' + gameDate + '";var level="' + level + '";var org="' + org + '";var mediaType="' + mediaType + '";var resolution="' + resolution + '";var audio_track="' + audio_track + '";var captions="' + captions + '";var force_vod="' + force_vod + '";var inning_half="' + inning_half + '";var inning_number="' + inning_number + '";var skip="' + skip + '";var skip_adjust="' + skip_adjust + '";var pad="' + pad + '";var linkType="' + linkType + '";var startFrom="' + startFrom + '";var scores="' + scores + '";var controls="' + controls + '";var scan_mode="' + scan_mode + '";var fav_team_boost=' + fav_team_boost + ';var content_protect="' + content_protect + '";' + "\n"
+- 
+-     // Reload function, called after options change
+--    body += 'var defaultDate="' + today + '";var curDate=new Date();var utcHours=curDate.getUTCHours();if ((utcHours >= ' + todayUTCHours + ') && (utcHours < ' + YESTERDAY_UTC_HOURS + ')){defaultDate="' + yesterday + '"}function reload(){var newurl="' + http_root + '/?";if (date != defaultDate){var urldate=date;if (date == "' + today + '"){urldate="today"}else if (date == "' + yesterday + '"){urldate="yesterday"}newurl+="date="+urldate+"&"}if (level != "' + default_level + '"){newurl+="level="+encodeURIComponent(level)+"&"}if (org != "All"){newurl+="org="+encodeURIComponent(org)+"&"}if (mediaType != "' + VALID_MEDIA_TYPES[0] + '"){newurl+="mediaType="+mediaType+"&"}if (mediaType=="Video"){if (resolution != "' + VALID_RESOLUTIONS[0] + '"){newurl+="resolution="+resolution+"&"}if (audio_track != "' + VALID_AUDIO_TRACKS[0] + '"){newurl+="audio_track="+encodeURIComponent(audio_track)+"&"}else if (resolution == "none"){newurl+="audio_track="+encodeURIComponent("' + VALID_AUDIO_TRACKS[2] + '")+"&"}if (captions != "' + VALID_CAPTIONS[0] + '"){newurl+="captions="+encodeURIComponent(captions)+"&"}if (inning_half != "' + VALID_INNING_HALF[0] + '"){newurl+="inning_half="+inning_half+"&"}if (inning_number != "' + VALID_INNING_NUMBER[0] + '"){newurl+="inning_number="+inning_number+"&"}if (skip != "' + VALID_SKIP[0] + '"){newurl+="skip="+skip+"&";if (skip_adjust != "' + DEFAULT_SKIP_ADJUST + '"){newurl+="skip_adjust="+skip_adjust+"&"}}}if (pad != "' + VALID_PAD[0] + '"){newurl+="pad="+pad+"&";}if (linkType != "' + VALID_LINK_TYPES[0] + '"){newurl+="linkType="+linkType+"&"}if (linkType=="' + VALID_LINK_TYPES[0] + '"){if (startFrom != "' + VALID_START_FROM[0] + '"){newurl+="startFrom="+startFrom+"&"}if (controls != "' + VALID_CONTROLS[0] + '"){newurl+="controls="+controls+"&"}}if (linkType=="Stream"){if (force_vod != "' + VALID_FORCE_VOD[0] + '"){newurl+="force_vod="+force_vod+"&"}}if (scores != "' + VALID_SCORES[0] + '"){newurl+="scores="+scores+"&"}if (scan_mode != "' + session.data.scan_mode + '"){newurl+="scan_mode="+scan_mode+"&"}if (content_protect != ""){newurl+="content_protect="+content_protect+"&"}window.location=newurl.substring(0,newurl.length-1)}' + "\n"
+-+    body += 'var defaultDate="' + today + '";var curDate=new Date();var utcHours=curDate.getUTCHours();if ((utcHours >= ' + todayUTCHours + ') && (utcHours < ' + YESTERDAY_UTC_HOURS + ')){defaultDate="' + yesterday + '"}function reload(){var newurl="' + http_root + '/?";if (date != defaultDate){var urldate=date;if (date == "' + today + '"){urldate="today"}else if (date == "' + yesterday + '"){urldate="yesterday"}newurl+="date="+urldate+"&"}if (level != "' + default_level + '"){newurl+="level="+encodeURIComponent(level)+"&"}if (org != "All"){newurl+="org="+encodeURIComponent(org)+"&"}if (mediaType != "' + VALID_MEDIA_TYPES[0] + '"){newurl+="mediaType="+mediaType+"&"}if (mediaType=="Video"){if (resolution != "' + VALID_RESOLUTIONS[0] + '"){newurl+="resolution="+resolution+"&"}if (audio_track != "' + VALID_AUDIO_TRACKS[0] + '"){newurl+="audio_track="+encodeURIComponent(audio_track)+"&"}else if (resolution == "none"){newurl+="audio_track="+encodeURIComponent("' + VALID_AUDIO_TRACKS[2] + '")+"&"}if (captions != "' + VALID_CAPTIONS[0] + '"){newurl+="captions="+encodeURIComponent(captions)+"&"}if (inning_half != "' + VALID_INNING_HALF[0] + '"){newurl+="inning_half="+inning_half+"&"}if (inning_number != "' + VALID_INNING_NUMBER[0] + '"){newurl+="inning_number="+inning_number+"&"}if (skip != "' + VALID_SKIP[0] + '"){newurl+="skip="+skip+"&";if (skip_adjust != "' + DEFAULT_SKIP_ADJUST + '"){newurl+="skip_adjust="+skip_adjust+"&"}}}if (pad != "' + VALID_PAD[0] + '"){newurl+="pad="+pad+"&";}if (linkType != "' + VALID_LINK_TYPES[0] + '"){newurl+="linkType="+linkType+"&"}if (linkType=="' + VALID_LINK_TYPES[0] + '"){if (startFrom != "' + VALID_START_FROM[0] + '"){newurl+="startFrom="+startFrom+"&"}if (controls != "' + VALID_CONTROLS[0] + '"){newurl+="controls="+controls+"&"}}if (linkType=="Stream"){if (force_vod != "' + VALID_FORCE_VOD[0] + '"){newurl+="force_vod="+force_vod+"&"}}if (scores != "' + VALID_SCORES[0] + '"){newurl+="scores="+scores+"&"}if (scan_mode != "' + session.data.scan_mode + '"){newurl+="scan_mode="+scan_mode+"&"}if (fav_team_boost != ' + fav_team_boost + '){newurl+="fav_team_boost="+fav_team_boost+"&"}if (content_protect != ""){newurl+="content_protect="+content_protect+"&"}window.location=newurl.substring(0,newurl.length-1)}' + "\n"
+- 
+-     // Ajax function for multiview and highlights
+-     body += 'function makeGETRequest(url, callback){var request=new XMLHttpRequest();request.onreadystatechange=function(){if (request.readyState==4 && request.status==200){callback(request.responseText)}};request.open("GET", url);request.send();}' + "\n"
+-@@ -1815,6 +1827,13 @@ app.get('/', async function(req, res) {
+-     }
+-     body += '</p>' + "\n"
+- 
+-+    if ( session.credentials.fav_teams && session.credentials.fav_teams.length > 0 && session.credentials.fav_teams[0] != '' ) {
+-+      body += '<p><span class="tooltip">Fav team boost<span class="tooltiptext">LI bonus added to Game Changer games involving your favorite team(s) (' + session.credentials.fav_teams.toString() + '). 0 = no preference, 0.3 = default, 2.0 = always prefer. Bases loaded at another team (LI ~2+) still beats a low-action fav game.</span></span>: '
+-+      body += '<input type="range" id="fav_team_boost_slider" min="0" max="2" step="0.1" value="' + fav_team_boost + '" style="vertical-align:middle;width:150px;cursor:pointer" oninput="fav_team_boost=parseFloat(this.value);document.getElementById(\'fav_boost_val\').textContent=fav_team_boost.toFixed(1)" onchange="reload()"/> '
+-+      body += '<span id="fav_boost_val">' + fav_team_boost.toFixed(1) + '</span>'
+-+      body += '</p>' + "\n"
+-+    }
+-+
+-     body += "<table>" + "\n"
+- 
+-     // Rename some parameters before display links
+-diff --git a/session.js b/session.js
+-index 4762b10..0715f0b 100644
+---- a/session.js
+-+++ b/session.js
+-@@ -1007,6 +1007,12 @@ class sessionClass {
+-       this.log('warning: one or more fav_teams abbreviation is invalid')
+-     }
+- 
+-+    // Default fav_team_boost if not yet stored
+-+    if ( typeof(this.credentials.fav_team_boost) === 'undefined' ) {
+-+      this.credentials.fav_team_boost = 0.3
+-+      this.save_credentials()
+-+    }
+-+
+-     // Check if free account
+-     this.free = false
+-     if (argv.free) {
+-@@ -1037,6 +1043,13 @@ class sessionClass {
+-     this.save_session_data()
+-   }
+- 
+-+  // Set the fav_team_boost (LI bonus added to favorite team games in Game Changer)
+-+  setFavTeamBoost(x) {
+-+    this.log('fav_team_boost set to ' + x)
+-+    this.credentials.fav_team_boost = x
+-+    this.save_credentials()
+-+  }
+-+
+-   // Set the linkType
+-   // used for storing the desired page type across throughout site navigation
+-   setLinkType(x) {
+-@@ -1819,7 +1832,7 @@ class sessionClass {
+-         let currentDate = new Date()
+-         cache_data = await this.getDayData(gameDate)
+- 
+--        if ( cache_data ) {
+-+        if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+-           let nationalCount = 0
+-           let freeCount = 0
+-           let blackouts = {}
+-@@ -5142,7 +5155,17 @@ class sessionClass {
+-               let run_differential_index = Math.max(-4, Math.min((home_score - away_score), 4)) + 4
+-               let inning_num_index = Math.min(inning_num, 9)
+- 
+--              let leverage_index = LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] + leverage_adjust
+-+              // LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+-+              const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+-+              const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+-+              let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+-+
+-+              // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+-+              const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+-+              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+-+                this.debuglog(game_changer_title + teams + ' fav team boost applied')
+-+                leverage_index += FAV_TEAM_BOOST
+-+              }
+- 
+-               games.push({
+-                 'leverage_index': leverage_index,
+-@@ -5236,7 +5259,9 @@ class sessionClass {
+-               if ( curr_game && (best_games[i].leverage_index > curr_game.leverage_index) ) {
+-                 game_better = true
+-               }
+--              if ( !curr_game || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+-+              // LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+-+              const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+-+              if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+-                 curr_game = best_games[i]
+-                 this.log(game_changer_title + 'loading game ' + curr_game.teams)
+-                 this.temp_cache.gamechanger[id].gamePk = curr_game.game_pk
 diff --git a/session.js b/session.js
-index 4762b10..0715f0b 100644
+index 0715f0b..a5ff376 100644
 --- a/session.js
 +++ b/session.js
-@@ -1007,6 +1007,12 @@ class sessionClass {
-       this.log('warning: one or more fav_teams abbreviation is invalid')
-     }
- 
-+    // Default fav_team_boost if not yet stored
-+    if ( typeof(this.credentials.fav_team_boost) === 'undefined' ) {
-+      this.credentials.fav_team_boost = 0.3
-+      this.save_credentials()
-+    }
-+
-     // Check if free account
-     this.free = false
-     if (argv.free) {
-@@ -1037,6 +1043,13 @@ class sessionClass {
-     this.save_session_data()
-   }
- 
-+  // Set the fav_team_boost (LI bonus added to favorite team games in Game Changer)
-+  setFavTeamBoost(x) {
-+    this.log('fav_team_boost set to ' + x)
-+    this.credentials.fav_team_boost = x
-+    this.save_credentials()
-+  }
-+
-   // Set the linkType
-   // used for storing the desired page type across throughout site navigation
-   setLinkType(x) {
-@@ -1819,7 +1832,7 @@ class sessionClass {
-         let currentDate = new Date()
-         cache_data = await this.getDayData(gameDate)
- 
--        if ( cache_data ) {
-+        if ( cache_data && cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
-           let nationalCount = 0
-           let freeCount = 0
-           let blackouts = {}
-@@ -5142,7 +5155,17 @@ class sessionClass {
-               let run_differential_index = Math.max(-4, Math.min((home_score - away_score), 4)) + 4
-               let inning_num_index = Math.min(inning_num, 9)
- 
--              let leverage_index = LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] + leverage_adjust
-+              // LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
-+              const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
-+              const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
-+              let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
-+
-+              // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
-+              const FAV_TEAM_BOOST = this.credentials.fav_team_boost
-+              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
-+                this.debuglog(game_changer_title + teams + ' fav team boost applied')
-+                leverage_index += FAV_TEAM_BOOST
-+              }
- 
-               games.push({
-                 'leverage_index': leverage_index,
-@@ -5236,7 +5259,9 @@ class sessionClass {
-               if ( curr_game && (best_games[i].leverage_index > curr_game.leverage_index) ) {
-                 game_better = true
+@@ -5051,6 +5051,8 @@ class sessionClass {
+                 continue
                }
--              if ( !curr_game || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
-+              // LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
-+              const really_boring = curr_game && (curr_game.leverage_index < 0.4)
-+              if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
-                 curr_game = best_games[i]
-                 this.log(game_changer_title + 'loading game ' + curr_game.teams)
-                 this.temp_cache.gamechanger[id].gamePk = curr_game.game_pk
+ 
++              let in_break = false
++
+               // Game is between innings
+               if ( (inning_half == 'Middle') || (inning_half == 'End') || (outs == 3) ) {
+                 if ( outs == 3 ) {
+@@ -5096,17 +5098,21 @@ class sessionClass {
+ 
+                   continue
+                 }
++                in_break = true
+               }
+ 
+               let inning_state = inning_half + ',' + inning_num
+               inning_states[game_pk] = inning_state
+ 
+               // if the inning state has changed, assume a break
+-              if ( (x < 3) && this.temp_cache.gamechanger[id].inning_states && (this.temp_cache.gamechanger[id].inning_states.length > 0) && this.temp_cache.gamechanger[id].inning_states[0][game_pk] && (inning_state != this.temp_cache.gamechanger[id].inning_states[0][game_pk]) ) {
+-                this.debuglog(game_changer_title + teams + ' inning break detected')
+-                omitted_games.break.push(teams)
+-                this.setBreakExpiry(id, game_pk)
+-                continue
++              if ( this.temp_cache.gamechanger[id].inning_states && (this.temp_cache.gamechanger[id].inning_states.length > 0) && this.temp_cache.gamechanger[id].inning_states[0][game_pk] && (inning_state != this.temp_cache.gamechanger[id].inning_states[0][game_pk]) ) {
++                if ( x < 3 ) {
++                  this.debuglog(game_changer_title + teams + ' inning break detected')
++                  omitted_games.break.push(teams)
++                  this.setBreakExpiry(id, game_pk)
++                  continue
++                }
++                in_break = true
+               }
+ 
+               // if the pitcher has changed, assume a break
+@@ -5115,11 +5121,14 @@ class sessionClass {
+               if ( cache_data.dates[0].games[i].linescore.defense && cache_data.dates[0].games[i].linescore.defense.pitcher && cache_data.dates[0].games[i].linescore.defense.pitcher.id ) {
+                 //pitcher = cache_data.data.games.game[i].pitcher.id
+                 pitcher = cache_data.dates[0].games[i].linescore.defense.pitcher.id
+-                if ( (x < 3) && this.temp_cache.gamechanger[id].players && (this.temp_cache.gamechanger[id].players.length > 0) && this.temp_cache.gamechanger[id].players[0][game_pk] && (this.temp_cache.gamechanger[id].players[0][game_pk].pitcher != pitcher) ) {
+-                  this.debuglog(game_changer_title + teams + ' pitching change break detected')
+-                  omitted_games.pitching_change.push(teams)
+-                  this.setBreakExpiry(id, game_pk)
+-                  continue
++                if ( this.temp_cache.gamechanger[id].players && (this.temp_cache.gamechanger[id].players.length > 0) && this.temp_cache.gamechanger[id].players[0][game_pk] && (this.temp_cache.gamechanger[id].players[0][game_pk].pitcher != pitcher) ) {
++                  if ( x < 3 ) {
++                    this.debuglog(game_changer_title + teams + ' pitching change break detected')
++                    omitted_games.pitching_change.push(teams)
++                    this.setBreakExpiry(id, game_pk)
++                    continue
++                  }
++                  in_break = true
+                 }
+               }
+ 
+@@ -5162,7 +5171,7 @@ class sessionClass {
+ 
+               // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+               const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+-              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
++              if ( !in_break && this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+                 this.debuglog(game_changer_title + teams + ' fav team boost applied')
+                 leverage_index += FAV_TEAM_BOOST
+               }
