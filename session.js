@@ -1007,6 +1007,12 @@ class sessionClass {
       this.log('warning: one or more fav_teams abbreviation is invalid')
     }
 
+    // Default fav_team_boost if not yet stored
+    if ( typeof(this.credentials.fav_team_boost) === 'undefined' ) {
+      this.credentials.fav_team_boost = 0.3
+      this.save_credentials()
+    }
+
     // Check if free account
     this.free = false
     if (argv.free) {
@@ -1035,6 +1041,13 @@ class sessionClass {
     this.log('scan_mode set to ' + x)
     this.data.scan_mode = x
     this.save_session_data()
+  }
+
+  // Set the fav_team_boost (LI bonus added to favorite team games in Game Changer)
+  setFavTeamBoost(x) {
+    this.log('fav_team_boost set to ' + x)
+    this.credentials.fav_team_boost = x
+    this.save_credentials()
   }
 
   // Set the linkType
@@ -5145,7 +5158,7 @@ class sessionClass {
               let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
 
               // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
-              const FAV_TEAM_BOOST = 0.3
+              const FAV_TEAM_BOOST = this.credentials.fav_team_boost
               if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
                 this.debuglog(game_changer_title + teams + ' fav team boost applied')
                 leverage_index += FAV_TEAM_BOOST
