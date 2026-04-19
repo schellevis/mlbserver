@@ -1007,6 +1007,12 @@ class sessionClass {
       this.log('warning: one or more fav_teams abbreviation is invalid')
     }
 
+    // Default fav_team_boost if not yet stored
+    if ( typeof(this.credentials.fav_team_boost) === 'undefined' ) {
+      this.credentials.fav_team_boost = 0.3
+      this.save_credentials()
+    }
+
     // Check if free account
     this.free = false
     if (argv.free) {
@@ -1035,6 +1041,13 @@ class sessionClass {
     this.log('scan_mode set to ' + x)
     this.data.scan_mode = x
     this.save_session_data()
+  }
+
+  // Set the fav_team_boost (LI bonus added to favorite team games in Game Changer)
+  setFavTeamBoost(x) {
+    this.log('fav_team_boost set to ' + x)
+    this.credentials.fav_team_boost = x
+    this.save_credentials()
   }
 
   // Set the linkType
@@ -5142,7 +5155,17 @@ class sessionClass {
               let run_differential_index = Math.max(-4, Math.min((home_score - away_score), 4)) + 4
               let inning_num_index = Math.min(inning_num, 9)
 
-              let leverage_index = LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] + leverage_adjust
+              // LOCAL PATCH: inning multiplier so later innings weigh heavier when LI is comparable
+              const INNING_MULTIPLIERS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.3, 1.6, 2.0]
+              const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
+              let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
+
+              // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+              const FAV_TEAM_BOOST = this.credentials.fav_team_boost
+              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+                this.debuglog(game_changer_title + teams + ' fav team boost applied')
+                leverage_index += FAV_TEAM_BOOST
+              }
 
               games.push({
                 'leverage_index': leverage_index,
@@ -5236,7 +5259,9 @@ class sessionClass {
               if ( curr_game && (best_games[i].leverage_index > curr_game.leverage_index) ) {
                 game_better = true
               }
-              if ( !curr_game || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
+              // LOCAL PATCH: also switch mid-at-bat if current game is really boring (LI < 0.4)
+              const really_boring = curr_game && (curr_game.leverage_index < 0.4)
+              if ( !curr_game || really_boring || (curr_game.new_batter && (large_leverage_diff || (curr_game_below_avg && game_better))) ) {
                 curr_game = best_games[i]
                 this.log(game_changer_title + 'loading game ' + curr_game.teams)
                 this.temp_cache.gamechanger[id].gamePk = curr_game.game_pk
