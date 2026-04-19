@@ -5,6 +5,17 @@
 
 # mlbserver
 
+## Changes in this fork
+
+This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
+
+- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
+- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
+- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
+- **Crash fix** — prevents server crash when the MLB schedule API returns no data (from [daslicious/mlbserver](https://github.com/daslicious/mlbserver))
+
+Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
+
 ## Installation
 
 ### node-cli
@@ -89,17 +100,6 @@ h264_v4l2m2m use V4L2 Linux kernel api to access hardware codecs
 h264_vaapi use VAAPI which is another abstraction API to access video acceleration hardware (Linux only)
 h264_videotoolbox use videotoolbox an API to access hardware on OS X
 ```
-
-## Changes in this fork
-
-This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
-
-- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
-- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
-- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
-- **Crash fix** — prevents server crash when the MLB schedule API returns no data (from [daslicious/mlbserver](https://github.com/daslicious/mlbserver))
-
-Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
 
 ## Credits
 

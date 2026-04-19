@@ -219,21 +219,12 @@ index 0000000..4e38965
 +- ffmpeg handles anything beyond plain HLS proxying.
 +- Most features are variations on "resolve a baseball event to a playable local URL".
 diff --git a/README.md b/README.md
-index a9045f7..86d065c 100644
+index a9045f7..7065fc7 100644
 --- a/README.md
 +++ b/README.md
-@@ -14,7 +14,7 @@ npm install -g mlbserver
+@@ -5,6 +5,17 @@
  
- ### docker
- ```
--docker pull tonywagner/mlbserver:latest
-+docker pull ghcr.io/schellevis/mlbserver:latest
- ```
- 
- 
-@@ -90,6 +90,17 @@ h264_vaapi use VAAPI which is another abstraction API to access video accelerati
- h264_videotoolbox use videotoolbox an API to access hardware on OS X
- ```
+ # mlbserver
  
 +## Changes in this fork
 +
@@ -246,15 +237,24 @@ index a9045f7..86d065c 100644
 +
 +Docker image: `ghcr.io/schellevis/mlbserver:latest` (rebuilt weekly)
 +
- ## Credits
+ ## Installation
  
- https://github.com/tonycpsu/streamglob
+ ### node-cli
+@@ -14,7 +25,7 @@ npm install -g mlbserver
+ 
+ ### docker
+ ```
+-docker pull tonywagner/mlbserver:latest
++docker pull ghcr.io/schellevis/mlbserver:latest
+ ```
+ 
+ 
 diff --git a/game-changer-patches.patch b/game-changer-patches.patch
 new file mode 100644
-index 0000000..c299243
+index 0000000..ac19177
 --- /dev/null
 +++ b/game-changer-patches.patch
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,236 @@
 +diff --git a/.github/workflows/docker-ghcr.yml b/.github/workflows/docker-ghcr.yml
 +new file mode 100644
 +index 0000000..def6ffc
@@ -476,27 +476,21 @@ index 0000000..c299243
 ++- ffmpeg handles anything beyond plain HLS proxying.
 ++- Most features are variations on "resolve a baseball event to a playable local URL".
 +diff --git a/README.md b/README.md
-+index a9045f7..86d065c 100644
++index a9045f7..7065fc7 100644
 +--- a/README.md
 ++++ b/README.md
-+@@ -14,7 +14,7 @@ npm install -g mlbserver
++@@ -5,6 +5,17 @@
 + 
-+ ### docker
-+ ```
-+-docker pull tonywagner/mlbserver:latest
-++docker pull ghcr.io/schellevis/mlbserver:latest
-+ ```
-+ 
-+ 
-+@@ -90,6 +90,17 @@ h264_vaapi use VAAPI which is another abstraction API to access video accelerati
-+ h264_videotoolbox use videotoolbox an API to access hardware on OS X
-+ ```
++ # mlbserver
 + 
 ++## Changes in this fork
 ++
 ++This fork is based on [tonywagner/mlbserver](https://github.com/tonywagner/mlbserver) with the following additions:
 ++
-++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage in
+++- **Game Changer: inning multiplier** — later innings (6th+) weigh progressively heavier when comparing leverage index across games
+++- **Game Changer: fav team boost** — configurable LI bonus for favorite teams, adjustable via slider on the homepage (default 0.3)
+++- **Game Changer: boring game switch** — switches immediately mid-at-bat when the current game's leverage index drops below 0.4
+++- **Crash fix** — p
 \ No newline at end of file
 diff --git a/index.js b/index.js
 index 07424ac..88e04df 100755
