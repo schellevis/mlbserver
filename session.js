@@ -5144,6 +5144,13 @@ class sessionClass {
               const inning_multiplier = inning_num > 9 ? 2.5 : INNING_MULTIPLIERS[inning_num - 1]
               let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][outs][run_differential_index] * inning_multiplier) + leverage_adjust
 
+              // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
+              const FAV_TEAM_BOOST = 0.3
+              if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+                this.debuglog(game_changer_title + teams + ' fav team boost applied')
+                leverage_index += FAV_TEAM_BOOST
+              }
+
               games.push({
                 'leverage_index': leverage_index,
                 'teams': teams,
