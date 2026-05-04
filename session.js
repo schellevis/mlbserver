@@ -3569,7 +3569,7 @@ class sessionClass {
       
       let currentDate = new Date()
       if ( !this.cache || !this.cache.bigInningScheduleCacheExpiry || (currentDate > new Date(this.cache.bigInningScheduleCacheExpiry)) ) {
-        if ( !this.cache.bigInningSchedule ) this.cache.bigInningSchedule = {}
+        this.cache.bigInningSchedule = {}
         let reqObj = {
           url: 'https://watch.product.api.espn.com/api/product/v3/watchespn/web/catalog/ae4eb028-0af3-42e7-8965-9304c5817969?lang=en&features=continueWatching%2Csfb-all%2Cpbov7%2Chigh-volume-row%2Csc4u%2Cguide-menu-header%2Ccutl%2Cheader-quickserve%2Cautoplay%2Cwatch-web-redesign%2CimageRatio58x13%2CpromoTiles%2CopenAuthz%2Cvideo-header%2Cexplore-row%2Cbutton-service%2Cinline-header%2Cflagship&deviceBrand=web&streamMenu=true&headerBgImageWidth=1280&countryCode=US&entitlements=no&tz=UTC-0400&userab=espn_watch_for_you_web-392*watch-fy-a-1642',
           headers: {

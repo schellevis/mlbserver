@@ -540,6 +540,10 @@ function getMasterPlaylist(streamURL, req, res, options = {}) {
       }
 
       let resolution = options.resolution || VALID_RESOLUTIONS[0]
+      // assume 1080p60 resolution is best, to enable fallback to 720p60 when necessary
+      if ( resolution == VALID_RESOLUTIONS[1] ) {
+        resolution = 'best'
+      }
       let audio_track = options.audio_track || VALID_AUDIO_TRACKS[0]
       // if specific audio track is requested, check if master playlist contains it
       if ( (audio_track != VALID_AUDIO_TRACKS[0]) && (audio_track != VALID_AUDIO_TRACKS[6]) ) {
@@ -2550,7 +2554,10 @@ app.get('/', async function(req, res) {
     }
 
     if ( mediaType == VALID_MEDIA_TYPES[0] ) {
-        body += '<p><span class="tooltip">Video<span class="tooltiptext">For video streams only: you can manually specifiy a video track (resolution) to use. Adaptive will let your client choose. 1080p60 or 720p60 is the best quality. 540p is default for multiview (see below).<br/><br/>None will allow to remove the video tracks, if you just want to listen to the audio while using the "start at inning" or "skip breaks" options enabled.</span></span>: '
+        body += '<p><span class="tooltip">Video<span class="tooltiptext">For video streams only: you can manually specifiy a video track (resolution) to use. Adaptive will let your client choose. Best will select either 1080p60 (MLB) or 720p60 (MiLB). 504p is default for multiview (see below).<br/><br/>None will allow to remove the video tracks, if you just want to listen to the audio while using the "start at inning" or "skip breaks" options enabled.</span></span>: '
+        body += '<button '
+        if ( resolution == 'best' ) body += 'class="default" '
+        body += 'onclick="resolution=\'best\';reload()">best</button> '
         for (var i = 0; i < VALID_RESOLUTIONS.length; i++) {
           body += '<button '
           if ( resolution == VALID_RESOLUTIONS[i] ) body += 'class="default" '
@@ -2761,6 +2768,8 @@ app.get('/', async function(req, res) {
     }
     
     body += '<p><span class="tooltip">Comskip link examples<span class="tooltiptext">You can generate a <a href="https://github.com/erikkaashoek/Comskip">Comskip</a>-style file to automatically skip sections (breaks, idle time, or non-action pitches) of games you record using DVR software when watched in compatible players. For example, if you record a game from your local OTA channel using Tvheadend, you can then fetch one of these Comskip files, put it in the same directory with the same name as your recorded video file, and Kodi will automatically skip those sections while you watch the video.<br><br>Specifying the team and broadcast_start_timestamp in the URL is required! For the timestamp, use the  time your DVR software began the recording. This should be your local time in YYYY-MM-DDTHH:MM:SS format.<br><br>Specifying a skip_adjust value in the URL is recommended, to adjust for broadcast delays. This will vary across different channels and different video sources.<br><br>For the txt file format, specifying the video frame rate (fps) in the URL is also required. This will commonly be either 30, 59.94, or 60, depending on your video source.<br><br>Optionally, setting pad to "on" will generate random extra skips at the end, to help avoid timeline spoilers.</span></span>: <a href="' + http_root + '/comskip.edl?team=CHC&date=2025-10-01&pad=on&skip=pitches&skip_adjust=11&broadcast_start_timestamp=2025-10-01T14:00:00' + content_protect_a + '">comskip.edl</a> or <a href="' + http_root + '/comskip.txt?team=CHC&date=2025-10-01&pad=on&skip=pitches&skip_adjust=11&broadcast_start_timestamp=2025-10-01T14:00:00&fps=59.94' + content_protect_a + '">comskip.txt</a></p>' + "\n"
+    
+    body += '<p><span class="tooltip">MPEG-TS examples<span class="tooltiptext">Experimental feature: a MPEGTS output format where you can adjust the audio sync with a URL parameter. Useful if the radio track is a consistent number of seconds ahead or behind the video track. Use positive sync values if radio is early, or negative values if radio is late.</span></span>: <a href="' + http_root + '/stream.ts?team=' + example_team + content_protect_a + '">Stream</a> or <a href="' + http_root + '/stream.ts?team=' + example_team + '&audio_track=radio&sync=2.3' + content_protect_a + '">Stream w/ radio sync</a></p>' + "\n"
 
     body += '</p></td></tr></table><br/>' + "\n"
 
