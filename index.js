@@ -1267,23 +1267,27 @@ app.get('/gamechangerplaylist.m3u8', async function(req, res) {
               let new_segments = []
               let new_segments_complete = false
               let segment_count = 0
-              for (var i=(body.length-1); i>=0; i--) {
+              let key
+              let iv
+              for (var i=0; i<body.length; i++) {
                 if ( body[i].startsWith('#EXT-X-KEY') ) {
-                  let key = url.resolve(u, body[i].match('URI="([^"]+)"')[1])
-                  let iv = body[i].match('IV=0x(.*)$')[1]
-                  let ts
-                  let extinf
-                  for (var j=1; j<=4; j++) {
-                    if ( body[i+j] ) {
-                      if ( !extinf && body[i+j].startsWith('#EXTINF') ) {
-                        extinf = body[i+j]
-                      } else if ( !ts && !body[i+j].startsWith('#') ) {
-                        ts = url.resolve(u, body[i+j])
-                      }
-                      if ( extinf && ts ) break;
+                  key = url.resolve(u, body[i].match('URI="([^"]+)"')[1])
+                  iv = body[i].match('IV=0x(.*)$')[1]
+                  break
+                }
+              }
+              if ( key && iv ) {
+                let ts
+                let extinf
+                for (var i=(body.length-1); i>=0; i--) {
+                  if ( body[i] ) {
+                    if ( !extinf && body[i].startsWith('#EXTINF') ) {
+                      extinf = body[i]
+                    } else if ( !ts && !body[i].startsWith('#') ) {
+                      ts = url.resolve(u, body[i])
                     }
                   }
-                  if ( key && iv && extinf && ts && !new_segments_complete ) {
+                  if ( extinf && ts && !new_segments_complete ) {
                     session.debuglog(game_changer_title + 'found segment ' + ts)
                     if ( discontinuity ) {
                       session.debuglog(game_changer_title + 'only getting newest segment after stream change')
@@ -1302,11 +1306,13 @@ app.get('/gamechangerplaylist.m3u8', async function(req, res) {
                     } else {
                       new_segments.unshift({'key':key, 'iv':iv, 'extinf':extinf, 'ts':ts, 'streamURLToken':streamURLToken})
                     }
+                    segment_count++
+                    ts = false
+                    extinf = false
+                    if ( new_segments_complete ) {
+                      break
+                    }
                   }
-                  segment_count++
-                }
-                if ( new_segments_complete ) {
-                  break
                 }
               }
 
