@@ -62,14 +62,30 @@ These are tightly coupled and often rely on upstream response quirks.
 Upstream remote: `upstream` → https://github.com/tonywagner/mlbserver.git
 Local patches are stored in `game-changer-patches.patch`.
 
+Preferred: merge upstream (keeps history, lets git 3-way resolve most of it).
+
 ```bash
 git fetch upstream
+git merge upstream/master
+# resolve conflicts, then verify local patches are still present:
+node --check index.js && node --check session.js
+git commit
+# regenerate the patch file (exclude it from itself, or it grows every sync):
+git diff upstream/master -- . ':(exclude)game-changer-patches.patch' > game-changer-patches.patch
+```
+
+Fallback (throw away local history, replay patch on top of upstream):
+
+```bash
 git reset --hard upstream/master
-git apply game-changer-patches.patch
-# if conflicts:
-git apply --3way game-changer-patches.patch
-# after syncing, regenerate and commit the patch file:
-git diff > game-changer-patches.patch
+git apply game-changer-patches.patch   # or --3way if it conflicts
+```
+
+Verify the patch still reproduces the tree:
+```bash
+git worktree add --detach /tmp/patchtest upstream/master
+git -C /tmp/patchtest apply --check game-changer-patches.patch
+git worktree remove --force /tmp/patchtest
 ```
 
 Check upstream changes relevant to Game Changer before syncing:
@@ -98,15 +114,18 @@ let leverage_index = (LI_TABLE[inning_num_index][inning_half][runners_on_base][o
 
 **File:** `session.js`, in `getBestGame()`, after leverage_index is calculated.
 
-Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage).
+Configurable LI bonus for favorite teams (default 0.3, stored in `credentials.json`, adjustable via slider on homepage). The boost is skipped while the game is in a break (`in_break`, set on inning changes / pitching changes), so a paused fav game does not out-rank live action elsewhere.
 
 ```js
 // LOCAL PATCH: fav team boost - slightly lower the bar for favorite teams
 const FAV_TEAM_BOOST = this.credentials.fav_team_boost
-if ( this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+if ( !in_break && this.credentials.fav_teams && this.credentials.fav_teams.length > 0 && (this.credentials.fav_teams.includes(away_name_abbrev) || this.credentials.fav_teams.includes(home_name_abbrev)) ) {
+  this.debuglog(game_changer_title + teams + ' fav team boost applied')
   leverage_index += FAV_TEAM_BOOST
 }
 ```
+
+The slider lives in `index.js` in the homepage handler: a `settingRow` inside the "Show more stream options" disclosure, with `favTeamBoostInfo` text in `settingsInfoText`. It reads/writes `fav_team_boost` via the query string and `session.setFavTeamBoost()`. When upstream reworks the options UI, this row has to be re-placed into the new markup.
 
 ### Game Changer: switch mid-at-bat when current game is boring
 
